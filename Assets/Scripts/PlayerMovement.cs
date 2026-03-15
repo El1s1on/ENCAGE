@@ -80,10 +80,12 @@ public class PlayerMovement : NetworkBehaviour
         // Для тестов, если нужно вызывать с клиента (можно удалить в продакшене)
         if (data.input.Debug && state.ContainsTicked() && IsServerStarted)
         {
-            if (pRagdoll.IsRagdolled)
-                pRagdoll.DeactivateRagdoll();
-            else
-                pRagdoll.ActivateRagdoll();
+            GetComponent<PlayerHealth>().TakeDamage(3f);
+
+            //if (pRagdoll.IsRagdolled)
+            //    pRagdoll.DeactivateRagdoll();
+            //else
+            //    pRagdoll.ActivateRagdoll();
         }
 
         if (pRagdoll.IsRagdolled)

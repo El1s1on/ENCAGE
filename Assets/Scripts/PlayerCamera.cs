@@ -13,23 +13,23 @@ public class PlayerCamera : NetworkBehaviour
     [SerializeField] private float pitchLimit = 85f;
 
     private PlayerInput pInput;
+    private PlayerUI pUI;
     private Transform mainCamera;
 
     // Храним абсолютные углы
     public float Yaw { get; private set; }
     private float pitch;
 
-    private void Awake()
-    {
-        pInput = GetComponent<PlayerInput>();
-    }
-
     public override void OnStartClient()
     {
         base.OnStartClient();
+
         if (!IsOwner) return;
 
+        pInput = GetComponent<PlayerInput>();
+        pUI = GetComponent<PlayerUI>();
         mainCamera = Instantiate(cameraPrefab).transform;
+        pUI.SettinUpCanvas(mainCamera);
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
