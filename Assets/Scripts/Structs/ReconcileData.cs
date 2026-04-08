@@ -11,28 +11,22 @@ public struct ReconcileData : IReconcileData
     public uint groundTick;
     public Vector3 standupPos;
     public Quaternion standupRot;
-    public bool PerformStandup;          // ← главный флаг вместо проверки Vector3.zero
+    public bool PerformStandup;
+    public float stamina;
+    public float regenDelay;
 
     public ReconcileData(
-        Vector3 pos,
-        Vector3 vel,
-        Vector3 flatVel,
-        Quaternion rot,
-        bool isRagdolled,
-        uint groundTick,
-        Vector3 standupPos,
-        Quaternion standupRot,
-        bool performStandup) : this()
+        Vector3 position, Vector3 velocity, Vector3 flatVelocity, Quaternion rotation,
+        bool isRagdolled, uint groundTickVal,
+        Vector3 standPos, Quaternion standRot, bool performStandup,
+        float currentStamina, float currentRegenDelay
+    ) : this()
     {
-        this.pos = pos;
-        this.vel = vel;
-        this.flatVel = flatVel;
-        this.rot = rot;
-        this.IsRagdolled = isRagdolled;
-        this.groundTick = groundTick;
-        this.standupPos = standupPos;
-        this.standupRot = standupRot;
-        this.PerformStandup = performStandup;
+        pos = position; vel = velocity; flatVel = flatVelocity; rot = rotation;
+        IsRagdolled = isRagdolled; groundTick = groundTickVal;
+        standupPos = standPos; standupRot = standRot; PerformStandup = performStandup;
+        stamina = currentStamina;
+        regenDelay = currentRegenDelay;
     }
 
     private uint _tick;

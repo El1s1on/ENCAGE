@@ -1,61 +1,298 @@
-using FishNet.Object;
+п»їusing FishNet.Object;
 using UnityEngine;
 
 public class PlayerCamera : NetworkBehaviour
 {
     [Header("Main")]
-    [SerializeField] private Camera cameraPrefab;
-    [Tooltip("Пустышка внутри Graphical_Object (например, на уровне глаз)")]
+    [SerializeField] private GameObject cameraPrefab;
     [SerializeField] private Transform visualCameraTarget;
+    [SerializeField] private float rotationSmooth = 20f;
 
     [Header("Sensitivity")]
-    [SerializeField] private float sensitivity = 0.1f; // Настройте под новую инпут систему
+    [SerializeField] private float mouseSensitivity = 100f;
     [SerializeField] private float pitchLimit = 85f;
+
+    [Header("Sway Settings")]
+    [SerializeField] private float swayLerpSpeed;
+    [SerializeField] private float maxSwayY = 0.12f;
+    [SerializeField] private float swayXForce = 0.08f;
+    [SerializeField] private float swaySmoothTime = 0.08f;
+
+    [Header("Tilt Settings")]
+    [SerializeField] private float maxTiltAngle = 10f;
+    [SerializeField] private float tiltPunchMultiplier = 8f;
+
+    [Header("Punch / Spring Settings")]
+    [SerializeField] private float punchDamping = 5f;
+    [SerializeField] private float punchSpring = 80f;
+    [SerializeField] private float punchIntensity = 1.5f;
+    [SerializeField] private float punchClamp = 80f;
+
+    [Header("Bob / Walk Settings")]
+    [SerializeField] private float walkBobFrequency = 10f;
+    [SerializeField] private float walkBobVertical = 0.06f;
+    [SerializeField] private float walkBobHorizontal = 0.04f;
+    [SerializeField] private float runBobMultiplier = 1.5f;
+    [SerializeField] private float bobLerp = 8f;
+
+    [Header("Breath")]
+    [SerializeField] private float breathVertical = 0.02f;
+    [SerializeField] private float breathAngle = 0.15f;
+    [SerializeField] private float breathBaseFrequency = 1.6f;
+    [SerializeField] private float breathMaxFrequency = 3.2f;
+    [SerializeField] private float breathIntensityMultiplier = 1.0f;
+    [SerializeField] private float exhaustionSmoothSpeed = 6f;
+
+    private float _smoothedExhaustion;
+    private float breathCycleTime;
 
     private PlayerInput pInput;
     private PlayerUI pUI;
-    private Transform mainCamera;
+    private PlayerRagdoll pRagdoll;
+    private PlayerMovement pMovement;
 
-    // Храним абсолютные углы
+    private Transform cameraHolder;
+    private Transform cameraOffset;
+    private Transform viewCamera;
+
     public float Yaw { get; private set; }
     private float pitch;
 
+    private float vmTime;
+
+    private Vector3 springAngle;
+    private Vector3 springVelocity;
+
+    private float swayOffsetY;
+    private float swayVelocity;
+    private float lerpedSwayX;
+    private float lerpedSwayY;
+    private Vector2 lastLook;
+
+    private Vector3 appliedPosOffset;
+    private Vector3 appliedAngOffset;
+
+    private Vector3 initialCameraOffsetEuler;
+    private Vector3 initialViewCameraLocalPos;
+    private bool _justStoodUp = false;
+
+    public void OnStandup() { _justStoodUp = true; }
+
+    public void AddViewPunch(Vector3 punch)
+    {
+        springVelocity += punch * punchIntensity;
+    }
+
+    private void UpdateExhaustion(float dt)
+    {
+        float staminaPercent = pMovement.CurrentStamina / 150f;
+        float target = (1f - staminaPercent) * 0.5f;
+
+        // Р­РєСЃРїРѕРЅРµРЅС†РёР°Р»СЊРЅРѕРµ СЃРіР»Р°Р¶РёРІР°РЅРёРµ вЂ” РїРѕР»РЅРѕСЃС‚СЊСЋ РЅРµР·Р°РІРёСЃРёРјРѕ РѕС‚ FPS
+        float alpha = 1f - Mathf.Exp(-exhaustionSmoothSpeed * dt);
+        _smoothedExhaustion = Mathf.Lerp(_smoothedExhaustion, target, alpha);
+    }
+
     public override void OnStartClient()
     {
-        base.OnStartClient();
-
         if (!IsOwner) return;
 
         pInput = GetComponent<PlayerInput>();
         pUI = GetComponent<PlayerUI>();
-        mainCamera = Instantiate(cameraPrefab).transform;
-        pUI.SettinUpCanvas(mainCamera);
+        pRagdoll = GetComponent<PlayerRagdoll>();
+        pMovement = GetComponent<PlayerMovement>();
+
+        cameraHolder = Instantiate(cameraPrefab).transform;
+        cameraOffset = cameraHolder.Find("CameraOffset");
+        viewCamera = cameraOffset.Find("Camera");
+
+        Transform audioListener = FindFirstObjectByType<AudioListener>().transform;
+        Debug.LogError(audioListener);
+        audioListener.parent = cameraHolder;
+        audioListener.localPosition = Vector3.zero;
+
+        pUI.SettinUpCanvas(viewCamera);
+
+        initialCameraOffsetEuler = cameraOffset.localEulerAngles;
+        initialViewCameraLocalPos = viewCamera.localPosition;
+
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
-        // Инициализируем стартовый угол
         Yaw = transform.eulerAngles.y;
+        lastLook = pInput.Look;
     }
 
     private void Update()
     {
-        if (!IsOwner || !mainCamera) return;
+        if (!IsOwner) return;
 
-        // В новой инпут системе pInput.Look уже содержит дельту за кадр
-        Yaw += pInput.Look.x * sensitivity;
-        pitch -= pInput.Look.y * sensitivity;
+        float dt = Time.deltaTime;
+
+        if (pRagdoll.IsRagdolled)
+        {
+            cameraHolder.rotation = Quaternion.RotateTowards(
+                cameraHolder.rotation,
+                visualCameraTarget.rotation,
+                360f * dt
+            );
+            return;
+        }
+
+        if (_justStoodUp)
+        {
+            _justStoodUp = false;
+            cameraHolder.rotation = Quaternion.Euler(pitch, Yaw, 0f);
+            return;
+        }
+
+        Vector2 look = pInput.Look;
+
+        Yaw += look.x * mouseSensitivity;
+        pitch -= look.y * mouseSensitivity;
         pitch = Mathf.Clamp(pitch, -pitchLimit, pitchLimit);
 
-        // Вращаем саму камеру (для обзора вверх/вниз и влево/вправо)
-        mainCamera.rotation = Quaternion.Euler(pitch, Yaw, 0f);
+        Quaternion targetRotation = Quaternion.Euler(pitch, Yaw, 0f);
+
+        // Р­РєСЃРїРѕРЅРµРЅС†РёР°Р»СЊРЅРѕРµ СЃРіР»Р°Р¶РёРІР°РЅРёРµ РїРѕРІРѕСЂРѕС‚Р° вЂ” СЃС‚Р°Р±РёР»СЊРЅРѕСЃС‚СЊ РїСЂРё Р»СЋР±С‹С… СЃРєР°С‡РєР°С… FPS
+        float rotationT = 1f - Mathf.Exp(-rotationSmooth * dt);
+        cameraHolder.rotation = Quaternion.Slerp(
+            cameraHolder.rotation,
+            targetRotation,
+            rotationT
+        );
     }
 
     private void LateUpdate()
     {
-        if (!IsOwner || !mainCamera) return;
+        if (!IsOwner) return;
 
-        // HARD LOCK (согласно Engineering Brief):
-        // Никакого SmoothDamp. VisualCameraTarget УЖЕ сглажен NetworkTickSmoother-ом.
-        mainCamera.position = visualCameraTarget.position;
+        float dt = Time.deltaTime;
+
+        cameraHolder.position = visualCameraTarget.position;
+
+        UpdateExhaustion(dt);
+
+        ApplyLookSway(dt);
+        UpdateSway(dt);
+        UpdateVMTime(dt);
+        ApplyTilt(dt);
+        IntegrateSpring(dt);
+        ApplyPunch();
+        ApplyBobAndBreath(dt);
+    }
+
+    private void ApplyLookSway(float dt)
+    {
+        Vector2 look = pInput.Look;
+        Vector2 delta = look - lastLook;
+        lastLook = look;
+
+        // Р­РєСЃРїРѕРЅРµРЅС†РёР°Р»СЊРЅРѕРµ СЃРіР»Р°Р¶РёРІР°РЅРёРµ (СЃС‚Р°Р±РёР»СЊРЅРѕ РїСЂРё СЂРµР·РєРёС… СЃРєР°С‡РєР°С… FPS)
+        float swayAlpha = 1f - Mathf.Exp(-swayLerpSpeed * dt);
+        lerpedSwayX = Mathf.Lerp(lerpedSwayX, delta.x * 100f, swayAlpha);
+        lerpedSwayY = Mathf.Lerp(lerpedSwayY, delta.y * 100f, swayAlpha);
+
+        AddViewPunch(new Vector3(-lerpedSwayY, -lerpedSwayX, 0f) * 0.003f);
+    }
+
+    private void UpdateSway(float dt)
+    {
+        // РЈР‘Р РђРќ *dt вЂ” С‚РµРїРµСЂСЊ sway Р·Р°РІРёСЃРёС‚ РѕС‚ СЃРєРѕСЂРѕСЃС‚Рё РїРѕРІРѕСЂРѕС‚Р° (mouse delta), Р° РЅРµ РѕС‚ FPS
+        // Р­С‚Рѕ РїРѕР»РЅРѕСЃС‚СЊСЋ СѓСЃС‚СЂР°РЅСЏРµС‚ Р·Р°РІРёСЃРёРјРѕСЃС‚СЊ РѕС‚ С‡Р°СЃС‚РѕС‚С‹ РєР°РґСЂРѕРІ
+        float mouseX = pInput.Look.x; // raw delta Р·Р° РєР°РґСЂ
+        float targetSwayY = -Mathf.Abs(mouseX) * swayXForce;
+        targetSwayY = Mathf.Clamp(targetSwayY, -maxSwayY, 0f);
+
+        swayOffsetY = Mathf.SmoothDamp(swayOffsetY, targetSwayY, ref swayVelocity, swaySmoothTime);
+    }
+
+    private void UpdateVMTime(float dt)
+    {
+        float speed = pMovement.GetFlatVelocity().magnitude;
+
+        if (speed > 0.1f && pMovement.IsGrounded)
+        {
+            float mult = pMovement.IsSprinting ? runBobMultiplier : 1f;
+            vmTime += dt * walkBobFrequency * mult;
+        }
+    }
+
+    private void ApplyTilt(float dt)
+    {
+        Vector3 localVel = transform.InverseTransformDirection(pMovement.GetFlatVelocity());
+        float tilt = -localVel.x / pMovement.CurrentMaxSpeed * maxTiltAngle;
+
+        AddViewPunch(new Vector3(0f, 0f, tilt * tiltPunchMultiplier * dt));
+    }
+
+    private void IntegrateSpring(float dt)
+    {
+        if (dt <= 0f) return;
+
+        // РџРѕР»РЅРѕСЃС‚СЊСЋ РїРµСЂРµСЂР°Р±РѕС‚Р°РЅРЅР°СЏ СЃС‚Р°Р±РёР»СЊРЅР°СЏ РёРЅС‚РµРіСЂР°С†РёСЏ РїСЂСѓР¶РёРЅС‹
+        // (СЃС‚Р°РЅРґР°СЂС‚РЅС‹Р№ damped harmonic oscillator вЂ” РЅРµ РІР·СЂС‹РІР°РµС‚СЃСЏ РїСЂРё Р±РѕР»СЊС€РёС… dt)
+        Vector3 acceleration = -springAngle * punchSpring - springVelocity * punchDamping;
+        springVelocity += acceleration * dt;
+        springAngle += springVelocity * dt;
+
+        springAngle.x = Mathf.Clamp(springAngle.x, -punchClamp, punchClamp);
+        springAngle.y = Mathf.Clamp(springAngle.y, -punchClamp, punchClamp);
+        springAngle.z = Mathf.Clamp(springAngle.z, -punchClamp, punchClamp);
+    }
+
+    private void ApplyPunch()
+    {
+        cameraOffset.localRotation =
+            Quaternion.Euler(initialCameraOffsetEuler) *
+            Quaternion.Euler(springAngle);
+    }
+
+    private void ApplyBobAndBreath(float dt)
+    {
+        float speed = pMovement.GetFlatVelocity().magnitude;
+        float norm = _smoothedExhaustion / 0.5f;
+
+        float frequency = Mathf.Lerp(breathBaseFrequency, breathMaxFrequency, norm * 0.7f);
+        breathCycleTime += dt * frequency;
+
+        float cycle = Mathf.Sin(breathCycleTime);
+
+        float shaped = cycle > 0f
+            ? Mathf.Pow(cycle, 0.6f)
+            : -Mathf.Pow(-cycle, 1.4f);
+
+        float amplitude = breathIntensityMultiplier * (0.4f + norm * 1.2f);
+
+        float verticalBreath = shaped * breathVertical * amplitude;
+        float horizontalBreath = shaped * breathAngle * amplitude * 0.3f;
+
+        float verticalBob = Mathf.Sin(vmTime) * walkBobVertical;
+        float horizontalBob = Mathf.Sin(vmTime * 0.5f) * walkBobHorizontal;
+
+        Vector3 targetPos = new Vector3(
+            horizontalBob,
+            verticalBob + verticalBreath + swayOffsetY,
+            0f
+        );
+
+        float bobAlpha = 1f - Mathf.Exp(-bobLerp * dt);
+        appliedPosOffset = Vector3.Lerp(appliedPosOffset, targetPos, bobAlpha);
+
+        viewCamera.localPosition = initialViewCameraLocalPos + appliedPosOffset;
+
+        if (norm > 0.9f)
+        {
+            float panic = (norm - 0.9f) * 10f;
+
+            if (Random.value < dt * 6f * panic)
+            {
+                AddViewPunch(new Vector3(
+                    Random.Range(-0.2f, 0.2f),
+                    Random.Range(-0.2f, 0.2f),
+                    0f
+                ) * 0.6f);
+            }
+        }
     }
 }

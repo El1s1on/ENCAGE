@@ -3,11 +3,14 @@ using FishNet.Component.Transforming.Beta;
 using FishNet.Object;
 using System.Collections.Generic;
 using UnityEngine;
+using PrimeTween;
+
 public class PlayerRagdoll : NetworkBehaviour
 {
     [SerializeField] private Transform cameraPositionTransform;
     [SerializeField] private Transform bodyTransform;
     [SerializeField] private Transform headTransform;
+    [SerializeField] private Transform eyesTransform;
     [SerializeField] private Rigidbody pelvisRigidbody;
 
     [Header("Ragdoll Stand-up")]
@@ -18,25 +21,27 @@ public class PlayerRagdoll : NetworkBehaviour
     [SerializeField] private float sleepThreshold = 0.03f;
 
     private PlayerMovement playerMovement;
+    private PlayerCamera playerCamera;
+    private PlayerAnimations pAnimations;
     private Animator animator;
     private NetworkAnimator networkAnimator;
     private NetworkTickSmoother tickSmoother;
+    private SkinnedMeshRenderer meshRenderer;
     private List<Rigidbody> allRigidbodies = new List<Rigidbody>();
     private CharacterController characterController;
 
+    private float originalCameraHeight;
     private Vector3 originalBodyLocalPos;
     private Quaternion originalBodyLocalRot;
 
-    public Vector3 PendingStandupPosition;
-    public Quaternion PendingStandupRotation;
+    [HideInInspector] public Vector3 PendingStandupPosition;
+    [HideInInspector] public Quaternion PendingStandupRotation;
+    [HideInInspector] public bool HasPendingStandup;
 
     private bool _isRagdolled;
     public bool IsRagdolled => _isRagdolled;
 
-    private bool _pendingStandup;                    // ← новый флаг
-    public bool HasPendingStandup => _pendingStandup;
-
-    // Стейт для интерполяции снапшотов
+    private Vector3 _pendingRagdollImpulse;
     private float timeSinceLastSync = 0f;
     private Vector3[] lastPositions;
     private Quaternion[] lastRotations;
@@ -44,17 +49,25 @@ public class PlayerRagdoll : NetworkBehaviour
     private Quaternion[] nextRotations;
     private float snapshotTime = 0f;
     private bool wasAsleep = false;
+    private bool _forceSnapNextLateUpdate = false;
 
     public override void OnStartNetwork()
     {
         base.OnStartNetwork();
         playerMovement = GetComponent<PlayerMovement>();
+        playerCamera = GetComponent<PlayerCamera>();
+        pAnimations = GetComponent<PlayerAnimations>();
         if (bodyTransform == null) bodyTransform = transform.Find("Graphical Object/Body");
 
         animator = bodyTransform.GetComponentInChildren<Animator>(true);
         networkAnimator = bodyTransform.GetComponentInChildren<NetworkAnimator>(true);
         tickSmoother = bodyTransform.parent?.GetComponent<NetworkTickSmoother>();
         characterController = GetComponent<CharacterController>();
+        meshRenderer = bodyTransform.GetComponentInChildren<SkinnedMeshRenderer>();
+        if (Owner.IsLocalClient)
+            meshRenderer.enabled = false;
+
+        originalCameraHeight = cameraPositionTransform.localPosition.y;
 
         CollectAllRigidbodies();
         TimeManager.OnPostTick += TimeManager_OnPostTick;
@@ -64,6 +77,14 @@ public class PlayerRagdoll : NetworkBehaviour
     {
         base.OnStopNetwork();
         TimeManager.OnPostTick -= TimeManager_OnPostTick;
+    }
+
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+
+        if (IsOwner)
+            headTransform.localScale = Vector3.zero;
     }
 
     private void CollectAllRigidbodies()
@@ -88,109 +109,57 @@ public class PlayerRagdoll : NetworkBehaviour
     }
 
     [Server]
-    public void ActivateRagdoll()
+    public void ActivateRagdoll(Vector3 impulse = default)
     {
+        _pendingRagdollImpulse = impulse;
         SetIsRagdolled(true);
+        SendSnapshot();
     }
 
     [Server]
     public void DeactivateRagdoll()
     {
         if (!_isRagdolled) return;
-
-        MoveRootToPelvisServer();   // рассчитываем позицию стендапа
-        _pendingStandup = true;     // поднимаем флаг
+        MoveRootToPelvisServer();
+        HasPendingStandup = true;
+        _pendingRagdollImpulse = Vector3.zero;
     }
 
-    // ====================== ВНУТРЕННЯЯ ЛОГИКА ======================
-    public void SetIsRagdolled(bool newValue)
+    private void ApplyRagdollImpulse(Vector3 impulse)
     {
-        if (_isRagdolled == newValue) return;
+        if (impulse == Vector3.zero) return;
 
-        bool oldValue = _isRagdolled;
-        _isRagdolled = newValue;
+        if (pelvisRigidbody != null)
+            pelvisRigidbody.linearVelocity = impulse;
 
-        if (!newValue) _pendingStandup = false;   // очищаем флаг при выходе
+        foreach (var rb in allRigidbodies)
+        {
+            if (rb == pelvisRigidbody) continue;
 
-        OnRagdollStateChanged(oldValue, newValue, base.IsServerInitialized);
+            Vector3 extra = impulse;
+            rb.AddForce(extra, ForceMode.VelocityChange);
+        }
     }
 
-    [Server]
-    private void MoveRootToPelvisServer()
+    public void PerformInstantStandupSnap()
     {
-        if (pelvisRigidbody == null) return;
+        ResetBonesToRoot();
 
-        Vector3 targetPos = pelvisRigidbody.position;
-
-        if (Physics.Raycast(targetPos + Vector3.up * 0.2f, Vector3.down, out RaycastHit hit, 2f, groundMask))
+        for (int i = 0; i < allRigidbodies.Count; i++)
         {
-            targetPos.y = hit.point.y + characterController.skinWidth + 0.05f; // +0.05f вместо 0.01f — запас
+            var rb = allRigidbodies[i];
+            rb.position = rb.transform.position;
+            rb.rotation = rb.transform.rotation;
         }
 
-        PendingStandupPosition = targetPos;
-
-        // ← ФИКС РОТАЦИИ (было криво, если pelvis наклонён)
-        Vector3 forward = pelvisRigidbody.transform.forward;
-        forward.y = 0f;
-        PendingStandupRotation = forward.sqrMagnitude > 0.001f
-            ? Quaternion.LookRotation(forward)
-            : transform.rotation;
-
-        Debug.DrawLine(targetPos, targetPos + Vector3.up * 0.1f, Color.red, 5f);
-        Debug.Log("SERVER STANDUP SET " + targetPos);
-    }
-
-    private void OnRagdollStateChanged(bool oldValue, bool newValue, bool asServer)
-    {
-        if (playerMovement != null) playerMovement.SetControllerEnabled(!newValue);
-        if (animator != null) animator.enabled = !newValue;
-        if (networkAnimator != null) networkAnimator.enabled = !newValue;
-
-        if (newValue) // ВХОД В RAGDOLL
+        if (tickSmoother != null && tickSmoother.SmootherController?.UniversalSmoother != null)
         {
-            timeSinceLastSync = 0f;
-            snapshotTime = 0f;
-            wasAsleep = false;
-
-            for (int i = 0; i < allRigidbodies.Count; i++)
-            {
-                var rb = allRigidbodies[i];
-                if (asServer)
-                {
-                    rb.isKinematic = false;
-                    rb.useGravity = true;
-                }
-                else
-                {
-                    rb.isKinematic = true;
-                    rb.useGravity = false;
-                }
-                lastPositions[i] = rb.position;
-                lastRotations[i] = rb.rotation;
-                nextPositions[i] = rb.position;
-                nextRotations[i] = rb.rotation;
-            }
-
-            if (asServer && pelvisRigidbody != null && playerMovement != null)
-                pelvisRigidbody.linearVelocity = playerMovement.GetVelocity();
-
-            cameraPositionTransform.SetParent(headTransform);
-            if (tickSmoother != null) tickSmoother.enabled = false;
+            tickSmoother.SmootherController.UniversalSmoother.Teleport();
         }
-        else // ВЫХОД ИЗ RAGDOLL
-        {
-            foreach (var rb in allRigidbodies)
-            {
-                if (asServer) rb.linearVelocity = Vector3.zero;
-                rb.isKinematic = true;
-                rb.useGravity = false;
-            }
 
-            cameraPositionTransform.SetParent(bodyTransform.parent);
-            cameraPositionTransform.localPosition = new Vector3(0, 1.695f, 0);
-            cameraPositionTransform.localRotation = Quaternion.identity;
-            if (tickSmoother != null) tickSmoother.enabled = true;
-        }
+        SnapRagdollBonesToCurrent();
+
+        _forceSnapNextLateUpdate = true;
     }
 
     public void ResetBonesToRoot()
@@ -199,28 +168,154 @@ public class PlayerRagdoll : NetworkBehaviour
         bodyTransform.localRotation = originalBodyLocalRot;
     }
 
-    public void EnableTickSmoother(bool enabled)
+    public void SnapRagdollBonesToCurrent()
     {
-        if (tickSmoother != null) tickSmoother.enabled = enabled;
+        for (int i = 0; i < allRigidbodies.Count; i++)
+        {
+            lastPositions[i] = allRigidbodies[i].position;
+            lastRotations[i] = allRigidbodies[i].rotation;
+            nextPositions[i] = allRigidbodies[i].position;
+            nextRotations[i] = allRigidbodies[i].rotation;
+        }
+        snapshotTime = 0f;
+    }
+
+    [Server]
+    private void MoveRootToPelvisServer()
+    {
+        if (pelvisRigidbody == null) return;
+
+        Vector3 targetPos = pelvisRigidbody.position;
+        if (Physics.Raycast(targetPos + Vector3.up * 0.2f, Vector3.down, out RaycastHit hit, 2f, groundMask))
+        {
+            targetPos.y = hit.point.y + characterController.skinWidth + 0.05f;
+        }
+
+        PendingStandupPosition = targetPos;
+
+        Vector3 forward = pelvisRigidbody.transform.forward;
+        forward.y = 0f;
+        PendingStandupRotation = forward.sqrMagnitude > 0.001f
+            ? Quaternion.LookRotation(forward)
+            : transform.rotation;
+    }
+
+    public void SetIsRagdolled(bool newValue)
+    {
+        if (_isRagdolled == newValue) return;
+
+        bool oldValue = _isRagdolled;
+        _isRagdolled = newValue;
+        HasPendingStandup = false;
+
+        OnRagdollStateChanged(oldValue, newValue, base.IsServerInitialized);
+    }
+
+    private void OnRagdollStateChanged(bool oldValue, bool newValue, bool asServer)
+    {
+        if (playerMovement != null) playerMovement.SetControllerEnabled(!newValue);
+        if (animator != null) animator.enabled = !newValue;
+        if (networkAnimator != null) networkAnimator.enabled = !newValue;
+
+        if (newValue)
+        {
+            timeSinceLastSync = 0f;
+            snapshotTime = 0f;
+            wasAsleep = false;
+
+            for (int i = 0; i < allRigidbodies.Count; i++)
+            {
+                var rb = allRigidbodies[i];
+                rb.isKinematic = !asServer;
+                if (asServer)
+                {
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                }
+                rb.useGravity = asServer;
+                lastPositions[i] = rb.position;
+                lastRotations[i] = rb.rotation;
+                nextPositions[i] = rb.position;
+                nextRotations[i] = rb.rotation;
+            }
+
+            Vector3 finalImpulse = _pendingRagdollImpulse;
+
+            if (asServer || IsOwner)
+                ApplyRagdollImpulse(finalImpulse);
+
+            _pendingRagdollImpulse = Vector3.zero;
+
+            meshRenderer.enabled = true;
+            cameraPositionTransform.SetParent(eyesTransform, false);
+            cameraPositionTransform.localPosition = Vector3.zero;
+            cameraPositionTransform.localRotation = Quaternion.identity;
+
+            Tween.LocalPosition(cameraPositionTransform, Vector3.zero, 0.2f, Ease.OutCubic);
+
+            ForceRagdollSnap();
+        }
+        else
+        {
+            cameraPositionTransform.SetParent(bodyTransform.parent, false);
+
+            Tween.LocalPosition(
+                cameraPositionTransform,
+                new Vector3(0, originalCameraHeight, 0),
+                0.6f,
+                Ease.OutCubic
+            );
+
+            foreach (var rb in allRigidbodies)
+            {
+                if (asServer) rb.linearVelocity = Vector3.zero;
+                rb.isKinematic = true;
+                rb.useGravity = false;
+            }
+
+            if (IsOwner)
+                meshRenderer.enabled = false;
+
+            if (pAnimations != null)
+            {
+                pAnimations.ForceGroundedIdle();
+            }
+
+            if (IsOwner && playerCamera != null)
+            {
+                playerCamera.OnStandup();
+            }
+        }
+    }
+
+    public void ForceRagdollSnap()
+    {
+        for (int i = 0; i < allRigidbodies.Count; i++)
+        {
+            lastPositions[i] = allRigidbodies[i].position;
+            lastRotations[i] = allRigidbodies[i].rotation;
+            nextPositions[i] = allRigidbodies[i].position;
+            nextRotations[i] = allRigidbodies[i].rotation;
+        }
+        snapshotTime = 0f;
     }
 
     private void TimeManager_OnPostTick()
     {
-        if (!_isRagdolled || !IsServerInitialized)
-            return;
+        if (!_isRagdolled || !IsServerInitialized) return;
 
         timeSinceLastSync += (float)TimeManager.TickDelta;
         if (timeSinceLastSync >= syncIntervalSeconds)
         {
             bool isAsleep = IsAllAsleep();
             if (!isAsleep || !wasAsleep)
-            {
                 SendSnapshot();
-            }
+
             wasAsleep = isAsleep;
             timeSinceLastSync = 0f;
         }
     }
+
     private void SendSnapshot()
     {
         for (int i = 0; i < allRigidbodies.Count; i++)
@@ -230,13 +325,12 @@ public class PlayerRagdoll : NetworkBehaviour
         }
         ReceiveSnapshotObserversRpc(lastPositions, lastRotations);
     }
+
     private bool IsAllAsleep()
     {
         foreach (var rb in allRigidbodies)
-        {
             if (rb.linearVelocity.sqrMagnitude > sleepThreshold * sleepThreshold)
                 return false;
-        }
         return true;
     }
 
@@ -253,29 +347,34 @@ public class PlayerRagdoll : NetworkBehaviour
         snapshotTime = 0f;
     }
 
-    public void SnapRagdollBonesToCurrent()
+    private void LateUpdate()
     {
-        for (int i = 0; i < allRigidbodies.Count; i++)
+        if (_forceSnapNextLateUpdate)
         {
-            lastPositions[i] = allRigidbodies[i].position;
-            lastRotations[i] = allRigidbodies[i].rotation;
-            nextPositions[i] = allRigidbodies[i].position;
-            nextRotations[i] = allRigidbodies[i].rotation;
-        }
-        snapshotTime = 0f;
-    }
+            Transform graphicalParent = bodyTransform.parent;
+            if (graphicalParent != null)
+            {
+                graphicalParent.position = transform.position;
+                graphicalParent.rotation = transform.rotation;
+            }
 
-    private void Update()
-    {
-        if (!_isRagdolled || IsServerInitialized)
-            return;
+            if (tickSmoother != null && tickSmoother.SmootherController?.UniversalSmoother != null)
+            {
+                tickSmoother.SmootherController.UniversalSmoother.Teleport();
+            }
+
+            _forceSnapNextLateUpdate = false;
+        }
+
+        if (IsServerInitialized || !_isRagdolled) return;
+
         snapshotTime += Time.deltaTime;
         float t = Mathf.Clamp01(snapshotTime / syncIntervalSeconds);
         for (int i = 0; i < allRigidbodies.Count; i++)
         {
-            var rb = allRigidbodies[i];
-            rb.position = Vector3.Lerp(lastPositions[i], nextPositions[i], t);
-            rb.rotation = Quaternion.Lerp(lastRotations[i], nextRotations[i], t);
+            var tr = allRigidbodies[i].transform;
+            tr.position = Vector3.Lerp(lastPositions[i], nextPositions[i], t);
+            tr.rotation = Quaternion.Lerp(lastRotations[i], nextRotations[i], t);
         }
     }
 }
