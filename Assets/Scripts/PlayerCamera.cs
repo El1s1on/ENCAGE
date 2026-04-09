@@ -56,7 +56,7 @@ public class PlayerCamera : NetworkBehaviour
     private Transform viewCamera;
 
     public float Yaw { get; private set; }
-    private float pitch;
+    public float Pitch { get; private set; }
 
     private float vmTime;
 
@@ -88,7 +88,6 @@ public class PlayerCamera : NetworkBehaviour
         float staminaPercent = pMovement.CurrentStamina / 150f;
         float target = (1f - staminaPercent) * 0.5f;
 
-        // Экспоненциальное сглаживание — полностью независимо от FPS
         float alpha = 1f - Mathf.Exp(-exhaustionSmoothSpeed * dt);
         _smoothedExhaustion = Mathf.Lerp(_smoothedExhaustion, target, alpha);
     }
@@ -142,19 +141,18 @@ public class PlayerCamera : NetworkBehaviour
         if (_justStoodUp)
         {
             _justStoodUp = false;
-            cameraHolder.rotation = Quaternion.Euler(pitch, Yaw, 0f);
+            cameraHolder.rotation = Quaternion.Euler(Pitch, Yaw, 0f);
             return;
         }
 
         Vector2 look = pInput.Look;
 
         Yaw += look.x * mouseSensitivity;
-        pitch -= look.y * mouseSensitivity;
-        pitch = Mathf.Clamp(pitch, -pitchLimit, pitchLimit);
+        Pitch -= look.y * mouseSensitivity;
+        Pitch = Mathf.Clamp(Pitch, -pitchLimit, pitchLimit);
 
-        Quaternion targetRotation = Quaternion.Euler(pitch, Yaw, 0f);
+        Quaternion targetRotation = Quaternion.Euler(Pitch, Yaw, 0f);
 
-        // Экспоненциальное сглаживание поворота — стабильность при любых скачках FPS
         float rotationT = 1f - Mathf.Exp(-rotationSmooth * dt);
         cameraHolder.rotation = Quaternion.Slerp(
             cameraHolder.rotation,
@@ -188,7 +186,6 @@ public class PlayerCamera : NetworkBehaviour
         Vector2 delta = look - lastLook;
         lastLook = look;
 
-        // Экспоненциальное сглаживание (стабильно при резких скачках FPS)
         float swayAlpha = 1f - Mathf.Exp(-swayLerpSpeed * dt);
         lerpedSwayX = Mathf.Lerp(lerpedSwayX, delta.x * 100f, swayAlpha);
         lerpedSwayY = Mathf.Lerp(lerpedSwayY, delta.y * 100f, swayAlpha);
@@ -198,9 +195,7 @@ public class PlayerCamera : NetworkBehaviour
 
     private void UpdateSway(float dt)
     {
-        // УБРАН *dt — теперь sway зависит от скорости поворота (mouse delta), а не от FPS
-        // Это полностью устраняет зависимость от частоты кадров
-        float mouseX = pInput.Look.x; // raw delta за кадр
+        float mouseX = pInput.Look.x;
         float targetSwayY = -Mathf.Abs(mouseX) * swayXForce;
         targetSwayY = Mathf.Clamp(targetSwayY, -maxSwayY, 0f);
 
@@ -230,8 +225,6 @@ public class PlayerCamera : NetworkBehaviour
     {
         if (dt <= 0f) return;
 
-        // Полностью переработанная стабильная интеграция пружины
-        // (стандартный damped harmonic oscillator — не взрывается при больших dt)
         Vector3 acceleration = -springAngle * punchSpring - springVelocity * punchDamping;
         springVelocity += acceleration * dt;
         springAngle += springVelocity * dt;

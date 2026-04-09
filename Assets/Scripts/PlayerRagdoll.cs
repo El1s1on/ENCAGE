@@ -64,8 +64,7 @@ public class PlayerRagdoll : NetworkBehaviour
         tickSmoother = bodyTransform.parent?.GetComponent<NetworkTickSmoother>();
         characterController = GetComponent<CharacterController>();
         meshRenderer = bodyTransform.GetComponentInChildren<SkinnedMeshRenderer>();
-        if (Owner.IsLocalClient)
-            meshRenderer.enabled = false;
+        meshRenderer.enabled = !Owner.IsLocalClient;
 
         originalCameraHeight = cameraPositionTransform.localPosition.y;
 

@@ -1,5 +1,4 @@
-using FishNet.Example.ColliderRollbacks;
-using FishNet.Object;
+using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -17,6 +16,8 @@ public class PlayerInput : MonoBehaviour
 
     public bool SprintHeld { get; private set; }
     public bool CrouchHeld { get; private set; }
+
+    public Action onLightAttack;
 
     private void Awake()
     {
@@ -42,6 +43,8 @@ public class PlayerInput : MonoBehaviour
 
         actions.Player.Crouch.performed += _ => CrouchHeld = true;
         actions.Player.Crouch.canceled += _ => CrouchHeld = false;
+
+        actions.Player.M1.performed += _ => onLightAttack?.Invoke();
     }
 
     private void OnDisable()

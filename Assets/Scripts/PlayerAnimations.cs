@@ -15,6 +15,7 @@ public class PlayerAnimations : NetworkBehaviour
     private readonly int hashDirZ = Animator.StringToHash("DirZ");
     private readonly int hashJump = Animator.StringToHash("Jump");
     private readonly int hashLand = Animator.StringToHash("Land");
+    private readonly int hashLightAttack = Animator.StringToHash("LightAttack");
     private readonly int hashIsGrounded = Animator.StringToHash("Grounded");
 
     private bool _forceImmediateIdleNextFrame = false;
@@ -32,7 +33,6 @@ public class PlayerAnimations : NetworkBehaviour
     {
         if (animator == null) return;
 
-        // Мгновенно сбрасываем всё
         animator.SetFloat(hashDirX, 0f, 0f, 0f);
         animator.SetFloat(hashDirZ, 0f, 0f, 0f);
         animator.SetBool(hashIsGrounded, true);
@@ -40,7 +40,6 @@ public class PlayerAnimations : NetworkBehaviour
         animator.ResetTrigger(hashJump);
         animator.ResetTrigger(hashLand);
 
-        // === ГЛАВНЫЙ ФОРС ===
         animator.Play("Land", 0, 0f);
         animator.Update(0f);
 
@@ -76,8 +75,8 @@ public class PlayerAnimations : NetworkBehaviour
         //if (IsServerStarted) networkAnimator.SetTrigger(hashDash);
     }
 
-    public void TriggerMelee()
+    public void TriggerLightAttack()
     {
-        //if (IsServerStarted) networkAnimator.SetTrigger(hashMelee);
+        if (IsServerStarted) networkAnimator.SetTrigger(hashLightAttack);
     }
 }

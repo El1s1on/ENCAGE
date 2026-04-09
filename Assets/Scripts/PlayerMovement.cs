@@ -3,6 +3,7 @@ using FishNet.Component.Transforming.Beta;
 using FishNet.Object;
 using FishNet.Object.Prediction;
 using FishNet.Transporting;
+using System;
 using UnityEngine;
 public class PlayerMovement : NetworkBehaviour
 {
@@ -58,6 +59,8 @@ public class PlayerMovement : NetworkBehaviour
 
     public float CurrentMaxSpeed { get; private set; }
     public bool IsSprinting { get; private set; }
+
+    public Action onReconcile;
 
     public override void OnStartNetwork()
     {
@@ -249,6 +252,8 @@ public class PlayerMovement : NetworkBehaviour
             characterController.Move(Vector3.down * 0.05f);
             characterController.Move(Vector3.zero);
         }
+
+        onReconcile?.Invoke();
     }
 
     public void SetControllerEnabled(bool enabled)

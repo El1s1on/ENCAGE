@@ -1,6 +1,5 @@
 using FishNet.Object;
 using FishNet.Transporting;
-using System.Runtime.CompilerServices;
 using UnityEngine;
 
 public class PlayerFootsteps : NetworkBehaviour
@@ -21,14 +20,18 @@ public class PlayerFootsteps : NetworkBehaviour
     [SerializeField, Range(0.6f, 1.0f)] private float landPitchMin = 0.75f;
     [SerializeField, Range(0.6f, 1.0f)] private float landPitchMax = 0.95f;
 
+    [Header("Step Settings")]
+    [SerializeField] private float idleResetTime = 0.5f;
+
     private PlayerMovement pMovement;
     private float distanceAccumulator;
     private bool _wasGrounded;
+    private float _idleTime;
+    private bool _nextFootIsLeft = true;
 
     public override void OnStartNetwork()
     {
         base.OnStartNetwork();
-
         pMovement = GetComponent<PlayerMovement>();
         if (pMovement == null)
         {
@@ -56,7 +59,9 @@ public class PlayerFootsteps : NetworkBehaviour
     private void OnTick()
     {
         if (!IsOwner && !IsServerStarted) return;
+
         bool isGroundedNow = pMovement.IsGrounded;
+
         if (!isGroundedNow)
         {
             distanceAccumulator = 0f;
@@ -66,7 +71,7 @@ public class PlayerFootsteps : NetworkBehaviour
 
         if (!_wasGrounded && isGroundedNow)
         {
-            TriggerLandStep();
+            TriggerStep(true);
             distanceAccumulator = 0f;
         }
 
@@ -77,9 +82,16 @@ public class PlayerFootsteps : NetworkBehaviour
 
         if (speed < 0.1f)
         {
-            distanceAccumulator = 0f;
+            _idleTime += (float)TimeManager.TickDelta;
+            if (_idleTime >= idleResetTime)
+            {
+                distanceAccumulator = 0f;
+                _idleTime = 0f;
+            }
             return;
         }
+
+        _idleTime = 0f;
 
         float dt = (float)TimeManager.TickDelta;
         bool isSprinting = pMovement.IsSprinting;
@@ -90,61 +102,49 @@ public class PlayerFootsteps : NetworkBehaviour
 
         if (distanceAccumulator >= currentStepDistance)
         {
-            TriggerFootstep();
+            TriggerStep(false);
             distanceAccumulator -= currentStepDistance;
         }
     }
 
-    private void TriggerFootstep()
-    {
-        if (footstepClips == null || footstepClips.Length == 0 || !pMovement.IsGrounded) return;
-
-        int clipIndex = Random.Range(0, footstepClips.Length);
-        AudioClip clip = footstepClips[clipIndex];
-
-        if (IsOwner)
-            PlayLocalFootstep(clip, false);
-        
-        if (IsServerStarted)
-        {
-            RpcPlayFootstep(clipIndex, false);
-        }  
-    }
-
-    private void TriggerLandStep()
+    private void TriggerStep(bool isLand)
     {
         if (footstepClips == null || footstepClips.Length == 0) return;
 
+        if (!isLand && !pMovement.IsGrounded) return;
+
         int clipIndex = Random.Range(0, footstepClips.Length);
         AudioClip clip = footstepClips[clipIndex];
 
+        bool isLeft = _nextFootIsLeft;
+        _nextFootIsLeft = !_nextFootIsLeft;
+
         if (IsOwner)
-            PlayLocalFootstep(clip, true);
+            PlayLocalFootstep(clip, isLand, isLeft);
 
         if (IsServerStarted)
-            RpcPlayFootstep(clipIndex, true);
+            RpcPlayFootstep(clipIndex, isLand, isLeft);
     }
 
     [ObserversRpc(ExcludeOwner = true)]
-    private void RpcPlayFootstep(int clipIndex, bool isLand, Channel channel = Channel.Unreliable)
+    private void RpcPlayFootstep(int clipIndex, bool isLand, bool isLeft, Channel channel = Channel.Unreliable)
     {
         if (footstepClips == null || clipIndex < 0 || clipIndex >= footstepClips.Length) return;
-
-        PlayLocalFootstep(footstepClips[clipIndex], isLand);
+        PlayLocalFootstep(footstepClips[clipIndex], isLand, isLeft);
     }
 
-    private void PlayLocalFootstep(AudioClip clip, bool isLand)
+    private void PlayLocalFootstep(AudioClip clip, bool isLand, bool isLeft)
     {
         if (footstepSource == null || clip == null) return;
 
-        if (isLand)
-        {
-            footstepSource.pitch = Random.Range(landPitchMin, landPitchMax);
-        }
+        footstepSource.pitch = isLand
+            ? Random.Range(landPitchMin, landPitchMax)
+            : Random.Range(pitchVariationMin, pitchVariationMax);
+
+        if (IsOwner)
+            footstepSource.panStereo = isLeft ? -0.8f : 0.8f;
         else
-        {
-            footstepSource.pitch = Random.Range(pitchVariationMin, pitchVariationMax);
-        }
+            footstepSource.panStereo = 0f;
 
         footstepSource.PlayOneShot(clip);
     }
