@@ -2167,9 +2167,9 @@ MonoBehaviour:
   maxSaturationDecrease: -75
   maxContrastIncrease: 50
   postProcessLerpSpeed: 10
-  flashMaxDarkness: 5
-  flashInDurationBase: 0.07
-  flashOutDurationBase: 0.2
+  vignetteFlashMaxIntensity: 0.6
+  vignetteFlashDecaySpeed: 8
+  vignetteFlashTargetColor: {r: 1, g: 0, b: 0, a: 1}
 --- !u!114 &8493108342033611647
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2296,15 +2296,22 @@ MonoBehaviour:
   _componentIndexCache: 7
   _addedNetworkObject: {fileID: 1375338390558589622}
   _networkObjectCache: {fileID: 1375338390558589622}
-  lightAttackDuration: 0.5
-  lightAttackStaminaCost: 7.5
-  handHitboxPosition: {fileID: 1638592814931590257}
-  hitRadius: 0.25
+  concreteImpactFX: {fileID: -7647477525434178635, guid: 3d40f733b8c18474ea592880b63a1956, type: 3}
+  bloodImpactFX: {fileID: 3623983618897107748, guid: b6bce19df12991b46bcd911527b16401, type: 3}
+  rightHandHitbox: {fileID: 6786062684542184216}
+  leftHandHitbox: {fileID: 1638592814931590257}
   hitMask:
     serializedVersion: 2
     m_Bits: 136
-  hitWindowStart: 0.15
-  hitWindowEnd: 0.35
+  occlusionMask:
+    serializedVersion: 2
+    m_Bits: 192
+  currentWeapon: {fileID: 11400000, guid: 05eafab052de9fe45acc8c0669c437ed, type: 2}
+  serverBaseReach: 2
+  serverHitRangeSlack: 0.75
+  serverHitWindowSlackTicks: 4
+  heavyBlockDamageMultiplier: 0.5
+  backstabDamageMultiplier: 2
 --- !u!114 &1375338390558589622
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4429,6 +4436,37 @@ Transform:
   - {fileID: 5209269546609263529}
   m_Father: {fileID: 4965399478813344543}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &6778880055949657115
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6786062684542184216}
+  m_Layer: 0
+  m_Name: LEFTARMHITBOX
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6786062684542184216
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6778880055949657115}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0, y: 0.085, z: -0.006}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 6748310469503615662}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &6885935896746640891
 GameObject:
   m_ObjectHideFlags: 0
@@ -5390,7 +5428,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1638592814931590257}
   m_Layer: 0
-  m_Name: RightArmHitbox
+  m_Name: RIGHTARMHITBOX
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -5614,6 +5652,7 @@ Transform:
   - {fileID: 1074819457527535548}
   - {fileID: 7991973440595715616}
   - {fileID: 1018211241360356621}
+  - {fileID: 6786062684542184216}
   m_Father: {fileID: 1135945747592326199}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &8906365840928136686

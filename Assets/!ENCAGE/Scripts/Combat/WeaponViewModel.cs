@@ -8,7 +8,12 @@ public class WeaponViewModel : NetworkBehaviour
     private PlayerCamera pCamera;
 
     private readonly int hashLightAttack = Animator.StringToHash("LightAttack");
-
+    private readonly int hashDirection = Animator.StringToHash("Direction");
+    private readonly int hashCharge = Animator.StringToHash("Charge");
+    private readonly int hashHeavyAttack = Animator.StringToHash("HeavyAttack");
+    private readonly int hashBlockParry = Animator.StringToHash("BlockParry");
+    private readonly int hashBlock = Animator.StringToHash("Block");
+    private readonly int hashBlockHit = Animator.StringToHash("BlockHit");
     public override void OnStartClient()
     {
         base.OnStartClient();
@@ -35,13 +40,38 @@ public class WeaponViewModel : NetworkBehaviour
         }
     }
 
-    public void LightAttack()
+    public void LightAttack(int dir)
     {
-        animator.SetTrigger(hashLightAttack);
+        this.animator.SetInteger(this.hashDirection, dir);
+        this.animator.SetBool(this.hashCharge, false);
+        this.animator.SetTrigger(this.hashLightAttack);
     }
 
-    public void CancelLightAttack()
+    public void HeavyAttack(int dir)
     {
-        animator.Play("Idle", 1, 0f);
+        this.animator.SetInteger(this.hashDirection, dir);
+        this.animator.SetBool(this.hashCharge, false);
+        this.animator.SetTrigger(this.hashHeavyAttack);
+    }
+    
+    public void Parry()
+    {
+        this.animator.SetTrigger(this.hashBlockParry);
+    }
+
+    public void BlockHit()
+    {
+        this.animator.SetTrigger(this.hashBlockHit);
+    }
+
+    public void SetCharge(bool value, int dir)
+    {
+        this.animator.SetInteger(this.hashDirection, dir);
+        this.animator.SetBool(this.hashCharge, value);
+    }
+
+    public void SetBlock(bool value)
+    {
+        this.animator.SetBool(this.hashBlock, value);
     }
 }

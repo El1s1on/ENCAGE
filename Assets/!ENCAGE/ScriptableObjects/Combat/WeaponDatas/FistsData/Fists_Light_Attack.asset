@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fd19fc7b2e3a69c46b2c06dae86f02b0, type: 3}
+  m_Name: Fists_Light_Attack
+  m_EditorClassIdentifier: Assembly-CSharp::AttackData
+  duration: 0.3
+  staminaCost: 5
+  staminaRegenDelay: 0.5
+  baseDamage: 5
+  damageVariance: 0.2
+  hitShape: 0
+  hitRadius: 0.5
+  hitLength: 0.9
+  extraForwardOffset: 0.16
+  hitWindowStart: 0.18
+  hitWindowEnd: 0.35
+  viewPunch: {x: 20, y: 0, z: -10}
