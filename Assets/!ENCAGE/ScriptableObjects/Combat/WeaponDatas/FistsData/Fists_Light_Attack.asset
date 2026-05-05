@@ -13,14 +13,14 @@ MonoBehaviour:
   m_Name: Fists_Light_Attack
   m_EditorClassIdentifier: Assembly-CSharp::AttackData
   duration: 0.3
-  staminaCost: 5
+  staminaCost: 0
   staminaRegenDelay: 0.5
   baseDamage: 5
   damageVariance: 0.2
   hitShape: 0
-  hitRadius: 0.5
-  hitLength: 0.9
-  extraForwardOffset: 0.16
+  hitRadius: 0.15
+  hitLength: 0
+  extraForwardOffset: 0.2
   hitWindowStart: 0.18
   hitWindowEnd: 0.35
   viewPunch: {x: 20, y: 0, z: -10}

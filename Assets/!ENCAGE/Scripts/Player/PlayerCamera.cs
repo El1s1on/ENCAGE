@@ -1,7 +1,5 @@
 ﻿using FishNet.Object;
-using PrimeTween;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 
@@ -52,11 +50,10 @@ public class PlayerCamera : NetworkBehaviour
     [SerializeField] private float maxContrastIncrease = 35f;
     [SerializeField] private float postProcessLerpSpeed = 8f;
 
-    // === НОВЫЙ ЗАГОЛОВОК И ПАРАМЕТРЫ ДЛЯ ВИНЬЕТКИ ===
     [Header("Damage Flash (Vignette)")]
-    [SerializeField] private float vignetteFlashMaxIntensity = 0.6f;     // Максимальная интенсивность виньетки при дамаге
-    [SerializeField] private float vignetteFlashDecaySpeed = 8f;        // Скорость затухания (≈0.3 секунды до почти нуля)
-    [SerializeField] private Color vignetteFlashTargetColor = Color.red; // Цвет виньетки во время флеша
+    [SerializeField] private float vignetteFlashMaxIntensity = 0.6f;
+    [SerializeField] private float vignetteFlashDecaySpeed = 8f;
+    [SerializeField] private Color vignetteFlashTargetColor = Color.red;
 
     private ColorAdjustments colorAdjustments;
     private float initialSaturation;
@@ -64,7 +61,6 @@ public class PlayerCamera : NetworkBehaviour
     private float currentSaturationTarget;
     private float currentContrastTarget;
 
-    // === НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ ВИНЬЕТКИ ===
     private Vignette vignette;
     private float initialVignetteIntensity;
     private Color initialVignetteColor;
@@ -73,6 +69,7 @@ public class PlayerCamera : NetworkBehaviour
     private float _smoothedExhaustion;
     private float breathCycleTime;
 
+    private PlayerContext ctx;
     private PlayerInput pInput;
     private PlayerUI pUI;
     private PlayerRagdoll pRagdoll;
@@ -139,36 +136,20 @@ public class PlayerCamera : NetworkBehaviour
         colorAdjustments.contrast.value = currentContrastTarget;
     }
 
-    // ===================================================================
-    // НОВЫЙ TakeDamageFlash — теперь работает через Vignette с красивым стакингом
-    // ===================================================================
     public void TakeDamageFlash(float strength01)
     {
         if (vignette == null) return;
 
-        // Стакаем силу флеша (каждый новый урон добавляет эффект, не ресетит)
-        // Даже при постоянном дамаге эффект усиливается и держится дольше
         vignetteFlashStrength = Mathf.Clamp01(vignetteFlashStrength + strength01);
     }
 
-    // ===================================================================
-    // Новый метод — применяется каждый LateUpdate
-    // ===================================================================
     private void ApplyDamageFlash(float dt)
     {
         if (vignette == null) return;
-
-        // Плавное экспоненциальное затухание (очень красиво и естественно)
         float decayAlpha = 1f - Mathf.Exp(-vignetteFlashDecaySpeed * dt);
         vignetteFlashStrength = Mathf.Lerp(vignetteFlashStrength, 0f, decayAlpha);
-
-        // Нормализованная сила эффекта (0..1)
         float norm = vignetteFlashStrength;
-
-        // Intensity: плавно от дефолтного значения → 0.6
         float targetIntensity = Mathf.Lerp(initialVignetteIntensity, vignetteFlashMaxIntensity, norm);
-
-        // Color: плавно от дефолтного чёрного → красный
         Color targetColor = Color.Lerp(initialVignetteColor, vignetteFlashTargetColor, norm);
 
         vignette.intensity.value = targetIntensity;
@@ -179,10 +160,11 @@ public class PlayerCamera : NetworkBehaviour
     {
         if (!IsOwner) return;
 
-        pInput = GetComponent<PlayerInput>();
-        pUI = GetComponent<PlayerUI>();
-        pRagdoll = GetComponent<PlayerRagdoll>();
-        pMovement = GetComponent<PlayerMovement>();
+        ctx = PlayerContext.Get(NetworkObject);
+        pInput = ctx.Input;
+        pUI = ctx.UI;
+        pRagdoll = ctx.Ragdoll;
+        pMovement = ctx.Movement;
 
         cameraHolder = Instantiate(cameraPrefab).transform;
         cameraOffset = cameraHolder.Find("CameraOffset");
@@ -282,8 +264,6 @@ public class PlayerCamera : NetworkBehaviour
         IntegrateSpring(dt);
         ApplyPunch();
         ApplyBobAndBreath(dt);
-
-        // === НОВЫЙ ВЫЗОВ ДЛЯ ДАМАГ-ФЛЕША ===
         ApplyDamageFlash(dt);
     }
 

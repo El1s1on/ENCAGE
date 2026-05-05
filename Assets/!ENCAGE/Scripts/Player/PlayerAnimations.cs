@@ -1,5 +1,6 @@
 ﻿using FishNet.Component.Animating;
 using FishNet.Object;
+using RootMotion.FinalIK;
 using UnityEngine;
 
 public class PlayerAnimations : NetworkBehaviour
@@ -7,6 +8,7 @@ public class PlayerAnimations : NetworkBehaviour
     [Header("References")]
     [SerializeField] private Animator animator;
     [SerializeField] private NetworkAnimator networkAnimator;
+    [SerializeField] private Transform aimIKHolder;
 
     [Header("Animation Smoothing")]
     [SerializeField] private float blendDampTime = 0.1f;
@@ -16,6 +18,7 @@ public class PlayerAnimations : NetworkBehaviour
     private readonly int hashJump = Animator.StringToHash("Jump");
     private readonly int hashLand = Animator.StringToHash("Land");
     private readonly int hashIsGrounded = Animator.StringToHash("Grounded");
+    private readonly int hashIsRunning = Animator.StringToHash("Running");
 
     private readonly int hashLightAttack = Animator.StringToHash("LightAttack");
     private readonly int hashHeavyAttack = Animator.StringToHash("HeavyAttack");
@@ -25,6 +28,8 @@ public class PlayerAnimations : NetworkBehaviour
     private readonly int hashCharge = Animator.StringToHash("Charge");
     private readonly int hashBlock = Animator.StringToHash("Block");
 
+    public float clampedPitch { get; private set; }
+
     public void SetMovementState(float dirX, float dirZ, bool isGrounded, bool isSprinting, float dt)
     {
         if (!IsServerStarted) return;
@@ -32,7 +37,7 @@ public class PlayerAnimations : NetworkBehaviour
         animator.SetFloat(hashDirX, dirX, blendDampTime, dt);
         animator.SetFloat(hashDirZ, dirZ, blendDampTime, dt);
         animator.SetBool(hashIsGrounded, isGrounded);
-        //animator.SetBool(hashIsSprinting, isSprinting);
+        animator.SetBool(hashIsRunning, isSprinting);
     }
 
     public void ForceGroundedIdle()
@@ -56,6 +61,17 @@ public class PlayerAnimations : NetworkBehaviour
         }
     }
 
+    public void SetPitch(float pitch)
+    {
+        if (aimIKHolder == null) return;
+        Debug.Log(pitch);
+        clampedPitch = Mathf.Clamp(pitch, -60f, 90f);
+
+        Vector3 localEuler = aimIKHolder.localEulerAngles;
+        localEuler.x = clampedPitch;
+        aimIKHolder.localEulerAngles = localEuler;
+    }
+
     public void TriggerJump()
     {
         if (IsServerStarted) networkAnimator.SetTrigger(hashJump);
@@ -74,7 +90,6 @@ public class PlayerAnimations : NetworkBehaviour
 
         string clip = $"Arms_lightattack{dir}";
         networkAnimator.Play(clip, 1, 0f);
-        animator.Update(0f);
     }
 
     [Server]
@@ -85,7 +100,6 @@ public class PlayerAnimations : NetworkBehaviour
 
         string clip = $"Arms_heavyattack{dir}";
         networkAnimator.Play(clip, 1, 0f);
-        animator.Update(0f);
     }
 
     [Server]
@@ -93,7 +107,6 @@ public class PlayerAnimations : NetworkBehaviour
     {
         string clip = $"Arms_blockparry";
         networkAnimator.Play(clip, 1, 0f);
-        animator.Update(0f);
     }
 
     [Server]
@@ -101,7 +114,6 @@ public class PlayerAnimations : NetworkBehaviour
     {
         string clip = $"Arms_blockhit";
         networkAnimator.Play(clip, 1, 0f);
-        animator.Update(0f);
     }
 
     [Server]

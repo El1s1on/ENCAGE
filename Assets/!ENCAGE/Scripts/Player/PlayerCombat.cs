@@ -1,4 +1,5 @@
-﻿using FishNet;
+﻿using Drawing;
+using FishNet;
 using FishNet.Connection;
 using FishNet.Managing.Timing;
 using FishNet.Object;
@@ -51,6 +52,7 @@ public class PlayerCombat : NetworkBehaviour
     private WeaponViewModel viewModel;
     public WeaponData currentWeapon;
 
+    private PlayerContext ctx;
     private PlayerAnimations pAnimations;
     private PlayerMovement pMovement;
     private PlayerRagdoll pRagdoll;
@@ -136,9 +138,6 @@ public class PlayerCombat : NetworkBehaviour
 
         if (IsOwner)
         {
-            pUI = GetComponent<PlayerUI>();
-            pInput = GetComponent<PlayerInput>();
-            pCamera = GetComponent<PlayerCamera>();
             viewModel = GetComponentInChildren<WeaponViewModel>();
 
             pInput.onStartM1 += OnStartM1;
@@ -152,9 +151,14 @@ public class PlayerCombat : NetworkBehaviour
     public override void OnStartNetwork()
     {
         base.OnStartNetwork();
-        pMovement = GetComponent<PlayerMovement>();
-        pAnimations = GetComponent<PlayerAnimations>();
-        pRagdoll = GetComponent<PlayerRagdoll>();
+        ctx = PlayerContext.Get(NetworkObject);
+        pMovement = ctx.Movement;
+        pAnimations = ctx.Animations;
+        pRagdoll = ctx.Ragdoll;
+        pUI = ctx.UI;
+        pInput = ctx.Input;
+        pCamera = ctx.Camera;
+
         InstanceFinder.NetworkManager.CacheObjects(concreteImpactFX, 10, IsServerInitialized);
         InstanceFinder.NetworkManager.CacheObjects(bloodImpactFX, 10, IsServerInitialized);
     }
@@ -405,7 +409,7 @@ public class PlayerCombat : NetworkBehaviour
         pCamera.AddViewPunch(viewpunchDir);
         if (viewModel != null)
             viewModel.LightAttack(direction);
-        Transform hitbox = direction == 1 ? rightHandHitbox : leftHandHitbox;
+        Transform hitbox = direction == 1 ? leftHandHitbox : rightHandHitbox;
         if (localHitboxRoutine != null) StopCoroutine(localHitboxRoutine);
         localHitboxRoutine = StartCoroutine(StartHitbox(hitbox, null, attackData));
     }
@@ -419,7 +423,7 @@ public class PlayerCombat : NetworkBehaviour
         pCamera.AddViewPunch(viewpunchDir);
         if (viewModel != null)
             viewModel.HeavyAttack(direction);
-        Transform hitbox = direction == 1 ? rightHandHitbox : leftHandHitbox;
+        Transform hitbox = direction == 1 ? leftHandHitbox : rightHandHitbox;
         if (localHitboxRoutine != null) StopCoroutine(localHitboxRoutine);
         localHitboxRoutine = StartCoroutine(StartHitbox(hitbox, null, attackData));
     }
@@ -497,6 +501,7 @@ public class PlayerCombat : NetworkBehaviour
         Vector3 pos = baseTransform.position;
         if (attack != null && Mathf.Abs(attack.extraForwardOffset) > 0.0001f)
             pos += baseTransform.forward * attack.extraForwardOffset;
+        Draw.ingame.WireSphere(pos, attack.hitRadius);
         return pos;
     }
 
@@ -733,6 +738,9 @@ public class PlayerCombat : NetworkBehaviour
     [TargetRpc]
     private void TargetRPC_OnOwnParrySuccess(NetworkConnection conn, int otherPlayerObjectId, Vector3 hitPoint)
     {
+        m2Held = false;
+        blockBuffered = false;
+
         viewModel.Parry();
         pUI.QuickState("parried", Color.green, 0.5f);
     }
@@ -959,8 +967,8 @@ public class PlayerCombat : NetworkBehaviour
         bool wasBlocked = false;
         bool wasParried = false;
 
-        PlayerContext victim = targetNob.GetComponent<PlayerContext>();
-        PlayerCombat victimCombat = victim.Combat;
+        PlayerContext victim = PlayerContext.Get(targetNob);
+        PlayerCombat victimCombat = victim != null ? victim.Combat : null;
 
         if (victimCombat != null && victimCombat.currentWeapon != null && victimCombat.currentWeapon.defense != null)
         {
@@ -1002,7 +1010,7 @@ public class PlayerCombat : NetworkBehaviour
         if (!wasParried && !wasBlocked && isBackstab)
             damageMultiplier *= Mathf.Max(0f, backstabDamageMultiplier);
 
-        int attackerId = base.NetworkObject != null ? base.NetworkObject.ObjectId : -1;
+        int attackerId = NetworkObject != null ? NetworkObject.ObjectId : -1;
         health.TakeCombatDamage(currentAttackData, damageMultiplier, attackerId, isBackstab, TimeManager.Tick);
 
         if (damageMultiplier > 0)
@@ -1020,7 +1028,10 @@ public class PlayerCombat : NetworkBehaviour
         {
             ServerNotifyOwnAttackParried(targetNob.ObjectId, hitPoint);
             if (victimCombat != null)
+            {
                 victimCombat.ServerNotifyOwnParrySuccess(attackerId, hitPoint);
+                victimCombat.Server_StopBlock();
+            }    
         }
         else if (wasBlocked && victimCombat != null)
         {
@@ -1264,6 +1275,7 @@ public class PlayerCombat : NetworkBehaviour
         }
     }
 
+    [Server]
     private void Server_StopBlock()
     {
         if (isBlocking)

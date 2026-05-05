@@ -13,6 +13,7 @@ public class PlayerHealth : NetworkBehaviour
     private float maxHealth = 100f;
     public float Health => _health.Value;
 
+    private PlayerContext ctx;
     private PlayerUI pUI;
     private PlayerCamera pCamera;
     private PlayerRagdoll pRagdoll;
@@ -21,9 +22,10 @@ public class PlayerHealth : NetworkBehaviour
     {
         base.OnStartNetwork();
 
-        pUI = GetComponent<PlayerUI>();
-        pRagdoll = GetComponent<PlayerRagdoll>();
-        pCamera = GetComponent<PlayerCamera>();
+        ctx = PlayerContext.Get(NetworkObject);
+        pUI = ctx.UI;
+        pRagdoll = ctx.Ragdoll;
+        pCamera = ctx.Camera;
 
         _health.OnChange += OnHealthChange;
         _health.Value = maxHealth;
@@ -67,7 +69,7 @@ public class PlayerHealth : NetworkBehaviour
 
         if (isBackstab)
         {
-            pUI.QuickState("Backstabbed", Color.red, 0.5f);
+            pUI.TargetRPC_QuickState(Owner, "Backstabbed", Color.red, 0.5f);
         }
     }
 

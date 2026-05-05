@@ -46,6 +46,7 @@ public class PlayerMovement : NetworkBehaviour
     private float _regenDelayRemaining;
 
     private CharacterController characterController;
+    private PlayerContext ctx;
     private PlayerInput pInput;
     private PlayerAnimations pAnimations;
     private PlayerCamera pCamera;
@@ -67,11 +68,12 @@ public class PlayerMovement : NetworkBehaviour
     public override void OnStartNetwork()
     {
         base.OnStartNetwork();
-        characterController = GetComponent<CharacterController>();
-        pAnimations = GetComponent<PlayerAnimations>();
-        pInput = GetComponent<PlayerInput>();
-        pRagdoll = GetComponent<PlayerRagdoll>();
-        pCamera = GetComponent<PlayerCamera>();
+        ctx = PlayerContext.Get(NetworkObject);
+        characterController = ctx.CharacterController;
+        pAnimations = ctx.Animations;
+        pInput = ctx.Input;
+        pRagdoll = ctx.Ragdoll;
+        pCamera = ctx.Camera;
 
         float tickDelta = (float)TimeManager.TickDelta;
         coyoteTicks = (uint)Mathf.Round(coyoteTime / tickDelta);
@@ -115,6 +117,13 @@ public class PlayerMovement : NetworkBehaviour
                 pRagdoll.ActivateRagdoll(flatVelocity);
         }
 
+        if (pRagdoll.IsRagdolled || !characterController.enabled)
+        {
+            velocity = Vector3.zero;
+            flatVelocity = Vector3.zero;
+            return;
+        }
+
         PlayerInputData input = data.input;
 
         float dt = (float)TimeManager.TickDelta;
@@ -131,20 +140,14 @@ public class PlayerMovement : NetworkBehaviour
             }
         }
 
-        if (pRagdoll.IsRagdolled)
-        {
-            velocity = Vector3.zero;
-            flatVelocity = Vector3.zero;
-            return;
-        }
-
         if (!IsServerStarted && !IsOwner)
         {
-            characterController.Move(new Vector3(0f, -1f, 0f) * dt);
             return;
         }
 
         transform.rotation = Quaternion.Euler(0f, input.Yaw, 0f);
+        pAnimations.SetPitch(input.Pitch);
+
         uint currentTick = data.GetTick();
 
         ReadInput(input);
@@ -186,13 +189,17 @@ public class PlayerMovement : NetworkBehaviour
             transform.position = standPos;
             transform.rotation = standRot;
             characterController.enabled = true;
+            characterController.transform.position = transform.position;
             velocity = Vector3.zero;
             flatVelocity = Vector3.zero;
             horizontalMove = Vector3.zero;
             pRagdoll.PerformInstantStandupSnap();
-            characterController.Move(Vector3.down * 0.05f);
-            characterController.Move(Vector3.zero);
-            pRagdoll.SetIsRagdolled(false);
+            //characterController.Move(Vector3.down * 0.05f);
+            //characterController.Move(Vector3.zero);
+
+            if (IsServerStarted)
+                pRagdoll.SetIsRagdolled(false);
+
             lastGroundTick = base.TimeManager.Tick;
             pRagdoll.PendingStandupPosition = Vector3.zero;
             pRagdoll.PendingStandupRotation = Quaternion.identity;
@@ -200,7 +207,7 @@ public class PlayerMovement : NetworkBehaviour
         }
 
         Reconcile(new ReconcileData(
-            transform.position, velocity, flatVelocity, transform.rotation,
+            transform.position, velocity, flatVelocity, transform.rotation, pAnimations.clampedPitch,
             pRagdoll.IsRagdolled, lastGroundTick,
             standPos, standRot, performStandup,
             _currentStamina,
@@ -229,6 +236,7 @@ public class PlayerMovement : NetworkBehaviour
         {
             transform.position = data.pos;
             transform.rotation = data.rot;
+            pAnimations.SetPitch(data.pitch);
         }
 
         characterController.enabled = !data.IsRagdolled;

@@ -16,6 +16,7 @@ public class Dummy : NetworkBehaviour
     private PlayerCombat pCombat;
     private uint nextActionTick;
     private uint pendingAttackTick;
+    private int direction = 1;
     private bool attackQueued;
 
     public override void OnStartServer()
@@ -54,9 +55,11 @@ public class Dummy : NetworkBehaviour
 
         if (!attackQueued)
         {
-            pCombat.Server_DoStartAttack(1);
+            pCombat.Server_DoStartAttack(direction);
             pendingAttackTick = currentTick + 1;
             attackQueued = true;
+            direction *= -1;
+
             return;
         }
 
@@ -84,7 +87,7 @@ public class Dummy : NetworkBehaviour
 
         if (!attackQueued)
         {
-            pCombat.Server_DoStartAttack(1);
+            pCombat.Server_DoStartAttack(direction);
 
             uint chargeTicks = TimeManager.TimeToTicks(
                 1f,
@@ -93,6 +96,7 @@ public class Dummy : NetworkBehaviour
 
             pendingAttackTick = currentTick + chargeTicks;
             attackQueued = true;
+            direction *= -1;
             return;
         }
 

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Fists_Defense
   m_EditorClassIdentifier: Assembly-CSharp::DefenseData
   blockCooldown: 0.2
-  parryWindow: 0.35
+  parryWindow: 0.2
   frontDotThreshold: 0.15
   backstabDotThreshold: -0.35
   blockStamina: 5

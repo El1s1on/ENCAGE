@@ -18,9 +18,9 @@ MonoBehaviour:
   baseDamage: 10
   damageVariance: 0.1
   hitShape: 0
-  hitRadius: 0.5
-  hitLength: 0.9
+  hitRadius: 0.25
+  hitLength: 0
   extraForwardOffset: 0.25
   hitWindowStart: 0.05
-  hitWindowEnd: 0.15
+  hitWindowEnd: 0.1
   viewPunch: {x: 50, y: -90, z: 0}

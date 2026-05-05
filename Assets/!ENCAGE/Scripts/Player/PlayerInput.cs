@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 public class PlayerInput : MonoBehaviour
 {
     private Inputs actions;
-    private PlayerCamera playerCamera;
+    private PlayerContext ctx;
 
     public Vector2 Move { get; private set; }
     public Vector2 Look { get; private set; }
@@ -23,13 +23,17 @@ public class PlayerInput : MonoBehaviour
     public Action onStartM2;
     public Action onReleaseM2;
 
-    private void Awake()
+    public void Initialize(PlayerContext ctx)
     {
         actions = new Inputs();
-        playerCamera = GetComponent<PlayerCamera>();
+        this.ctx = ctx;
+        enabled = ctx.IsLocalPlayer;
+
+        if (enabled)
+            SubscribeToInputActions();
     }
 
-    private void OnEnable()
+    private void SubscribeToInputActions()
     {
         actions.Enable();
         actions.Player.Move.performed += ctx => Move = ctx.ReadValue<Vector2>();
@@ -49,13 +53,13 @@ public class PlayerInput : MonoBehaviour
         actions.Player.Crouch.canceled += _ => CrouchHeld = false;
 
         actions.Player.M1.performed += _ => onStartM1?.Invoke();
-        actions.Player.M1.performed -= _ => onReleaseM1?.Invoke();
+        actions.Player.M1.canceled += _ => onReleaseM1?.Invoke();
 
         actions.Player.M2.performed += _ => onStartM2?.Invoke();
-        actions.Player.M2.performed -= _ => onReleaseM2?.Invoke();
+        actions.Player.M2.canceled += _ => onReleaseM2?.Invoke();
     }
 
-    private void OnDisable()
+    public void Deinitialize()
     {
         actions.Disable();
     }
@@ -65,7 +69,8 @@ public class PlayerInput : MonoBehaviour
         PlayerInputData data = new PlayerInputData
         {
             Move = Move,
-            Yaw = playerCamera != null ? playerCamera.Yaw : 0f,
+            Yaw = ctx.Camera != null ? ctx.Camera.Yaw : 0f,
+            Pitch = ctx.Camera != null ? ctx.Camera.Pitch : 0f,
             Jump = jumpPressed,
             Dash = dashPressed,
             Debug = debugPressed,

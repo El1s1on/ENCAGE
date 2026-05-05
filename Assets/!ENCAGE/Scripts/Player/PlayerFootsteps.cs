@@ -23,6 +23,7 @@ public class PlayerFootsteps : NetworkBehaviour
     [Header("Step Settings")]
     [SerializeField] private float idleResetTime = 0.5f;
 
+    private PlayerContext ctx;
     private PlayerMovement pMovement;
     private float distanceAccumulator;
     private bool _wasGrounded;
@@ -32,12 +33,8 @@ public class PlayerFootsteps : NetworkBehaviour
     public override void OnStartNetwork()
     {
         base.OnStartNetwork();
-        pMovement = GetComponent<PlayerMovement>();
-        if (pMovement == null)
-        {
-            Debug.LogError("PlayerFootsteps: PlayerMovement not found!", this);
-            return;
-        }
+        ctx = PlayerContext.Get(NetworkObject);
+        pMovement = ctx.Movement;
 
         _wasGrounded = pMovement.IsGrounded;
 

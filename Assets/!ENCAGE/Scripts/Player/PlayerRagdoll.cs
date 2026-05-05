@@ -7,6 +7,7 @@ using PrimeTween;
 using FishNet.Object.Synchronizing;
 using Unity.Collections.LowLevel.Unsafe;
 using FishNet.Connection;
+using RootMotion.FinalIK;
 
 public class PlayerRagdoll : NetworkBehaviour
 {
@@ -23,8 +24,9 @@ public class PlayerRagdoll : NetworkBehaviour
     [SerializeField] private float syncIntervalSeconds = 0.067f;
     [SerializeField] private float sleepThreshold = 0.03f;
 
-    private PlayerMovement playerMovement;
-    private PlayerCamera playerCamera;
+    private PlayerContext ctx;
+    private PlayerMovement pMovement;
+    private PlayerCamera pCamera;
     private PlayerAnimations pAnimations;
     private Animator animator;
     private NetworkAnimator networkAnimator;
@@ -57,9 +59,11 @@ public class PlayerRagdoll : NetworkBehaviour
     public override void OnStartNetwork()
     {
         base.OnStartNetwork();
-        playerMovement = GetComponent<PlayerMovement>();
-        playerCamera = GetComponent<PlayerCamera>();
-        pAnimations = GetComponent<PlayerAnimations>();
+        ctx = PlayerContext.Get(NetworkObject);
+        pMovement = ctx.Movement;
+        pCamera = ctx.Camera;
+        pAnimations = ctx.Animations;
+
         if (bodyTransform == null) bodyTransform = transform.Find("Graphical Object/Body");
 
         animator = bodyTransform.GetComponentInChildren<Animator>(true);
@@ -68,6 +72,18 @@ public class PlayerRagdoll : NetworkBehaviour
         characterController = GetComponent<CharacterController>();
         meshRenderer = bodyTransform.GetComponentInChildren<SkinnedMeshRenderer>();
         meshRenderer.enabled = !Owner.IsLocalClient;
+
+        var iks = GetComponentsInChildren<IK>(true);
+        foreach (var ik in iks)
+        {
+            if (ik is FullBodyBipedIK fbik)
+            {
+                fbik.solver.OnPreUpdate = () => {
+                    if (!_isRagdolled.Value) return;
+                    return;
+                };
+            }
+        }
 
         originalCameraHeight = cameraPositionTransform.localPosition.y;
 
@@ -132,6 +148,8 @@ public class PlayerRagdoll : NetworkBehaviour
     [Server]
     public void ActivateRagdoll(Vector3 impulse = default)
     {
+        DisableAndResetIK();
+
         _pendingRagdollImpulse = impulse;
         SetIsRagdolled(true);
         SendSnapshot();
@@ -141,9 +159,106 @@ public class PlayerRagdoll : NetworkBehaviour
     public void DeactivateRagdoll()
     {
         if (!_isRagdolled.Value) return;
+
+        ResetIKTargets();
         MoveRootToPelvisServer();
         HasPendingStandup = true;
         _pendingRagdollImpulse = Vector3.zero;
+
+        ForceSnapOnClients();
+    }
+
+    private void DisableAndResetIK()
+    {
+        var iks = bodyTransform.GetComponentsInChildren<IK>(true);
+        foreach (var ik in iks)
+        {
+            if (ik is FullBodyBipedIK fbik)
+            {
+                // Правильный способ сброса весов для FullBodyBipedIK
+                var solver = fbik.solver;
+
+                // Сброс всех весов для каждой конечности
+                foreach (var effector in solver.effectors)
+                {
+                    effector.positionWeight = 0f;
+                    effector.rotationWeight = 0f;
+                }
+
+                // Сброс тела
+                solver.bodyEffector.positionWeight = 0f;
+                solver.bodyEffector.rotationWeight = 0f;
+
+                // Обновление
+                solver.Update();
+            }
+            ik.enabled = false;
+        }
+    }
+
+    private void ResetIKTargets()
+    {
+        var fbik = bodyTransform.GetComponentInChildren<FullBodyBipedIK>(true);
+        if (fbik != null)
+        {
+            var solver = fbik.solver;
+
+            // Сброс весов для каждой конечности
+            foreach (var effector in solver.effectors)
+            {
+                effector.positionWeight = 0f;
+                effector.rotationWeight = 0f;
+            }
+
+            // Сброс тела
+            solver.bodyEffector.positionWeight = 0f;
+            solver.bodyEffector.rotationWeight = 0f;
+
+            // Принудительное обновление
+            solver.Update();
+        }
+    }
+
+    public void FullIKReset()
+    {
+        var fbik = bodyTransform.GetComponentInChildren<FullBodyBipedIK>(true);
+        if (fbik != null)
+        {
+            // Сначала отключаем
+            fbik.enabled = false;
+
+            var solver = fbik.solver;
+
+            // Принудительно фиксируем текущие трансформы как базовые
+            solver.FixTransforms();
+
+            // Сброс всех весов в ноль
+            foreach (var effector in solver.effectors)
+            {
+                effector.positionWeight = 0f;
+                effector.rotationWeight = 0f;
+            }
+
+            solver.bodyEffector.positionWeight = 0f;
+            solver.bodyEffector.rotationWeight = 0f;
+
+            // Обновляем солвер
+            solver.Update();
+
+            // Теперь включаем обратно
+            fbik.enabled = true;
+
+            // И еще одно обновление
+            solver.Update();
+
+            // Дополнительный сброс позиций для всех костей
+            var animator = bodyTransform.GetComponent<Animator>();
+            if (animator != null)
+            {
+                animator.Update(0f);
+                animator.Rebind();
+            }
+        }
     }
 
     private void ApplyRagdollImpulse(Vector3 impulse)
@@ -165,6 +280,13 @@ public class PlayerRagdoll : NetworkBehaviour
     public void PerformInstantStandupSnap()
     {
         ResetBonesToRoot();
+
+        // Принудительное обновление аниматора перед снэпом
+        if (animator != null)
+        {
+            animator.Update(0f);
+            animator.Rebind();
+        }
 
         for (int i = 0; i < allRigidbodies.Count; i++)
         {
@@ -229,12 +351,18 @@ public class PlayerRagdoll : NetworkBehaviour
 
     private void OnRagdollStateChanged(bool oldValue, bool newValue, bool asServer)
     {
-        if (playerMovement != null) playerMovement.SetControllerEnabled(!newValue);
+        if (pMovement != null) pMovement.SetControllerEnabled(!newValue);
         if (animator != null) animator.enabled = !newValue;
         if (networkAnimator != null) networkAnimator.enabled = !newValue;
 
+        var ikComponents = bodyTransform.GetComponentsInChildren<IK>(true);
+        foreach (var ik in ikComponents)
+        {
+            ik.enabled = !newValue;
+        }
+
         int ragdollLayer = LayerMask.NameToLayer("Ragdoll");
-        int playerLayer = LayerMask.NameToLayer("Player");
+        int playerLayer = LayerMask.NameToLayer("Body");
 
         foreach (var rb in allRigidbodies)
             rb.gameObject.layer = newValue ? ragdollLayer : playerLayer;
@@ -265,7 +393,7 @@ public class PlayerRagdoll : NetworkBehaviour
 
             Vector3 finalImpulse = _pendingRagdollImpulse;
 
-            if (asServer || IsOwner)
+            if (IsServerInitialized)
                 ApplyRagdollImpulse(finalImpulse);
 
             _pendingRagdollImpulse = Vector3.zero;
@@ -300,14 +428,16 @@ public class PlayerRagdoll : NetworkBehaviour
             if (IsOwner)
                 meshRenderer.enabled = false;
 
+            FullIKReset();
+
             if (pAnimations != null)
             {
                 pAnimations.ForceGroundedIdle();
             }
 
-            if (IsOwner && playerCamera != null)
+            if (IsOwner && pCamera != null)
             {
-                playerCamera.OnStandup();
+                pCamera.OnStandup();
             }
         }
     }
@@ -322,6 +452,23 @@ public class PlayerRagdoll : NetworkBehaviour
             nextRotations[i] = allRigidbodies[i].rotation;
         }
         snapshotTime = 0f;
+    }
+
+    [ObserversRpc]
+    private void ForceSnapOnClients()
+    {
+        if (!IsServerInitialized && _isRagdolled.Value)
+        {
+            for (int i = 0; i < allRigidbodies.Count; i++)
+            {
+                var rb = allRigidbodies[i];
+                lastPositions[i] = rb.position;
+                lastRotations[i] = rb.rotation;
+                nextPositions[i] = rb.position;
+                nextRotations[i] = rb.rotation;
+            }
+            snapshotTime = syncIntervalSeconds;
+        }
     }
 
     private void TimeManager_OnPostTick()

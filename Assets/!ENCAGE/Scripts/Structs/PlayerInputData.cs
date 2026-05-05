@@ -13,5 +13,6 @@ public struct PlayerInputData
     public bool Crouch;
 
     public float Yaw;
+    public float Pitch;
 }
 
