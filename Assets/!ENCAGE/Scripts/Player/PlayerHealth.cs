@@ -51,7 +51,8 @@ public class PlayerHealth : NetworkBehaviour
     }
 
     [Server]
-    public void TakeCombatDamage(AttackData attack, float damageMultiplier, int attackerObjectId, bool isBackstab, uint serverTick)
+    public void TakeCombatDamage(AttackData attack, float damageMultiplier, int attackerObjectId,
+        bool isBackstab, uint serverTick, float hitboxMultiplier = 1f)
     {
         if (attack == null)
             return;
@@ -64,7 +65,8 @@ public class PlayerHealth : NetworkBehaviour
             varianceMultiplier = 1f + SecureSigned01(attackerObjectId, serverTick) * variance;
         }
 
-        float amount = Mathf.Max(0f, attack.baseDamage * varianceMultiplier * Mathf.Max(0f, damageMultiplier));
+        float totalMultiplier = Mathf.Max(0f, damageMultiplier) * Mathf.Max(0f, hitboxMultiplier);
+        float amount = Mathf.Max(0f, attack.baseDamage * varianceMultiplier * totalMultiplier);
         TakeDamage(amount);
 
         if (isBackstab)
@@ -99,7 +101,7 @@ public class PlayerHealth : NetworkBehaviour
         Vector3 hurtPunch = Random.insideUnitSphere * hurtIntensity;
         pCamera.AddViewPunch(hurtPunch);
 
-        float strength = hurtIntensity / 250f;
+        float strength = hurtIntensity / 500f;
         pCamera.TakeDamageFlash(strength);
     }
 

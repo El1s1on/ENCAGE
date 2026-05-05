@@ -38,6 +38,8 @@ public class PlayerCombat : NetworkBehaviour
         UnblockQueue
     }
 
+    [SerializeField] private Transform cameraPosition;
+
     [Header("FX")]
     [SerializeField] private NetworkObject concreteImpactFX;
     [SerializeField] private NetworkObject bloodImpactFX;
@@ -501,7 +503,6 @@ public class PlayerCombat : NetworkBehaviour
         Vector3 pos = baseTransform.position;
         if (attack != null && Mathf.Abs(attack.extraForwardOffset) > 0.0001f)
             pos += baseTransform.forward * attack.extraForwardOffset;
-        Draw.ingame.WireSphere(pos, attack.hitRadius);
         return pos;
     }
 
@@ -748,7 +749,6 @@ public class PlayerCombat : NetworkBehaviour
     [Server]
     public void ServerNotifyOwnParrySuccess(int otherPlayerObjectId, Vector3 hitPoint)
     {
-        // Third-person replication for other players.
         if (pAnimations != null)
             pAnimations.Parry();
 
@@ -1011,9 +1011,16 @@ public class PlayerCombat : NetworkBehaviour
             damageMultiplier *= Mathf.Max(0f, backstabDamageMultiplier);
 
         int attackerId = NetworkObject != null ? NetworkObject.ObjectId : -1;
-        health.TakeCombatDamage(currentAttackData, damageMultiplier, attackerId, isBackstab, TimeManager.Tick);
+        float hitboxMultiplier = 1f;
+        HitboxGroup victimHitboxGroup = victim?.HitboxGroup;
+        if (victimHitboxGroup != null)
+        {
+            hitboxMultiplier = victimHitboxGroup.GetDamageMultiplier(targetCollider);
+        }
 
-        if (damageMultiplier > 0)
+        health.TakeCombatDamage(currentAttackData, damageMultiplier, attackerId, isBackstab, TimeManager.Tick, hitboxMultiplier);
+
+        if (damageMultiplier * hitboxMultiplier > 0)
         {
             NetworkObject nob = NetworkManager.GetPooledInstantiated(bloodImpactFX, hitPoint, Quaternion.LookRotation(hitNormal), true);
             ServerManager.Spawn(nob);
@@ -1031,13 +1038,29 @@ public class PlayerCombat : NetworkBehaviour
             {
                 victimCombat.ServerNotifyOwnParrySuccess(attackerId, hitPoint);
                 victimCombat.Server_StopBlock();
-            }    
+            }
         }
         else if (wasBlocked && victimCombat != null)
         {
             bool wasHeavy = currentAttackData == currentWeapon.heavyAttack;
             victimCombat.ServerNotifyOwnBlockHit(attackerId, hitPoint, wasHeavy);
         }
+
+        if (victimHitboxGroup != null && damageMultiplier * hitboxMultiplier > 0)
+        {
+            Vector3 attackerToTarget = targetNob.transform.position - transform.position;
+
+            attackerToTarget.y = 0f;
+
+            if (attackerToTarget.sqrMagnitude < 0.01f)
+                attackerToTarget = transform.forward;
+
+            Vector3 hitDirection = attackerToTarget.normalized;
+
+            float rawDamage = currentAttackData.baseDamage * damageMultiplier * hitboxMultiplier;
+            victimHitboxGroup.ServerTriggerHitReaction(targetCollider, hitDirection, hitPoint, rawDamage);
+        }
+
         serverRegisteredDamageHitThisAttack = true;
 
         if (CanSendToOwner())
@@ -1132,7 +1155,7 @@ public class PlayerCombat : NetworkBehaviour
         Vector3 effectivePoint = hitPoint;
 
         if (targetObjectId != -1 &&
-            base.NetworkManager?.ServerManager?.Objects?.Spawned.TryGetValue(targetObjectId, out NetworkObject targetNob) == true &&
+            NetworkManager?.ServerManager?.Objects?.Spawned.TryGetValue(targetObjectId, out NetworkObject targetNob) == true &&
             targetNob != null)
         {
             Collider c = GetBestTargetCollider(targetNob, hitPoint);
@@ -1155,19 +1178,23 @@ public class PlayerCombat : NetworkBehaviour
         return true;
     }
 
-    [Server]
     private static Collider GetBestTargetCollider(NetworkObject targetNob, Vector3 nearPoint)
     {
         if (targetNob == null) return null;
+
+        HitboxGroup hitboxGroup = PlayerContext.Get(targetNob).HitboxGroup;
+        if (hitboxGroup != null && hitboxGroup.TryGetClosestHitbox(nearPoint, out HitboxGroup.HitboxEntry entry))
+        {
+            return entry.collider;
+        }
 
         Collider[] cols = targetNob.GetComponentsInChildren<Collider>();
         if (cols == null || cols.Length == 0) return null;
 
         Collider best = null;
         float bestSqr = float.PositiveInfinity;
-        for (int i = 0; i < cols.Length; i++)
+        foreach (Collider c in cols)
         {
-            Collider c = cols[i];
             if (c == null || !c.enabled || c.isTrigger) continue;
 
             Vector3 p = c.ClosestPoint(nearPoint);
@@ -1249,7 +1276,7 @@ public class PlayerCombat : NetworkBehaviour
             if (now >= windowStart && now <= windowEnd)
             {
                 Collider[] hits = Physics.OverlapSphere(
-                    transform.position + transform.forward,
+                    cameraPosition.position + cameraPosition.forward,
                     currentAttackData.hitRadius,
                     hitMask
                 );
@@ -1261,8 +1288,8 @@ public class PlayerCombat : NetworkBehaviour
 
                     if (!hitDedup.Add(nob.ObjectId)) continue;
 
-                    Vector3 point = c.ClosestPoint(transform.position);
-                    Vector3 normal = (point - transform.position).normalized;
+                    Vector3 point = c.ClosestPoint(cameraPosition.position);
+                    Vector3 normal = (point - cameraPosition.position).normalized;
 
                     PreciseTick pt = TimeManager.GetPreciseTick(TickType.LocalTick);
 

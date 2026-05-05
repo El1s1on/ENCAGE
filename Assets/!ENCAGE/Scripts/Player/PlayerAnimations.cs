@@ -64,7 +64,6 @@ public class PlayerAnimations : NetworkBehaviour
     public void SetPitch(float pitch)
     {
         if (aimIKHolder == null) return;
-        Debug.Log(pitch);
         clampedPitch = Mathf.Clamp(pitch, -60f, 90f);
 
         Vector3 localEuler = aimIKHolder.localEulerAngles;

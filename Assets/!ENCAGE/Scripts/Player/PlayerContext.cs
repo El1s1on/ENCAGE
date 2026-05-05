@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 public class PlayerContext : NetworkBehaviour
 {
     public CharacterController CharacterController { get; private set; }
+    public HitboxGroup HitboxGroup { get; private set; }
     public PlayerAnimations Animations { get; private set; }
     public PlayerFootsteps Footsteps { get; private set; }
     public PlayerMovement Movement { get; private set; }
@@ -50,6 +51,7 @@ public class PlayerContext : NetworkBehaviour
     private void CacheComponents()
     {
         CharacterController = GetComponent<CharacterController>();
+        HitboxGroup = GetComponent<HitboxGroup>();
         Animations = GetComponent<PlayerAnimations>();
         Footsteps = GetComponent<PlayerFootsteps>();
         Movement = GetComponent<PlayerMovement>();
