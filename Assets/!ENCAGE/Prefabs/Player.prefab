@@ -324,7 +324,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4c5245b122b33c442a043e0cacf5c757, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WeaponViewModel
-  _componentIndexCache: 11
+  _componentIndexCache: 12
   _addedNetworkObject: {fileID: 1375338390558589622}
   _networkObjectCache: {fileID: 1375338390558589622}
   rotationSpeed: 20
@@ -864,7 +864,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e8cac635f24954048aad3a6ff9110beb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: FishNet.Runtime::FishNet.Component.Animating.NetworkAnimator
-  _componentIndexCache: 10
+  _componentIndexCache: 11
   _addedNetworkObject: {fileID: 1375338390558589622}
   _networkObjectCache: {fileID: 1375338390558589622}
   IgnoredParameters: []
@@ -3659,9 +3659,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 82462c12bb7de5d4c84c111201eef191, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HitboxGroup
-  _componentIndexCache: 255
+  _componentIndexCache: 1
   _addedNetworkObject: {fileID: 1375338390558589622}
-  _networkObjectCache: {fileID: 0}
+  _networkObjectCache: {fileID: 1375338390558589622}
   hitboxes:
   - type: 0
     collider: {fileID: 4304925021357364100}
@@ -3753,9 +3753,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cefafd6c9dc28b444a0ba00776ecabb8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerMovement
-  _componentIndexCache: 1
+  _componentIndexCache: 2
   _addedNetworkObject: {fileID: 1375338390558589622}
-  _networkObjectCache: {fileID: 1375338390558589622}
+  _networkObjectCache: {fileID: 0}
   walkSpeed: 5
   sprintSpeed: 7.5
   gravity: -30
@@ -3779,6 +3779,9 @@ MonoBehaviour:
   sprintStaminaDrainPerSecond: 7.5
   jumpStaminaCost: 15
   depletedRegenDelaySeconds: 2
+  retreatSpeed: 0.7
+  stunTime: 1.25
+  retreatTime: 0.5
 --- !u!114 &8262684454132448169
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3791,7 +3794,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2595594b177c5c14589fcfd83b0d2900, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerCamera
-  _componentIndexCache: 2
+  _componentIndexCache: 3
   _addedNetworkObject: {fileID: 1375338390558589622}
   _networkObjectCache: {fileID: 1375338390558589622}
   cameraPrefab: {fileID: 1818592911639987801, guid: 8618da5db4efe5b45af487a7bf4405fb, type: 3}
@@ -3823,9 +3826,7 @@ MonoBehaviour:
   maxSaturationDecrease: -75
   maxContrastIncrease: 50
   postProcessLerpSpeed: 10
-  vignetteFlashMaxIntensity: 0.6
-  vignetteFlashDecaySpeed: 8
-  vignetteFlashTargetColor: {r: 1, g: 0, b: 0, a: 1}
+  stunViewPunch: {x: -60, y: 300, z: 50}
 --- !u!114 &8493108342033611647
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3838,7 +3839,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8dc5d7b469fbbb448848a7bc2244d726, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerAnimations
-  _componentIndexCache: 3
+  _componentIndexCache: 4
   _addedNetworkObject: {fileID: 1375338390558589622}
   _networkObjectCache: {fileID: 1375338390558589622}
   animator: {fileID: 7608803417937172183}
@@ -3857,7 +3858,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 898e3dd6b23f5da48b51c789c05ad68a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerRagdoll
-  _componentIndexCache: 4
+  _componentIndexCache: 5
   _addedNetworkObject: {fileID: 1375338390558589622}
   _networkObjectCache: {fileID: 1375338390558589622}
   cameraPositionTransform: {fileID: 5947791071142101092}
@@ -3885,7 +3886,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a8228a51db6f6364fb227e4d27099ba2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerHealth
-  _componentIndexCache: 5
+  _componentIndexCache: 6
   _addedNetworkObject: {fileID: 1375338390558589622}
   _networkObjectCache: {fileID: 1375338390558589622}
   maxHealth: 100
@@ -3901,7 +3902,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 584edf156a9b23c4aaee1aa03b836a69, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerUI
-  _componentIndexCache: 6
+  _componentIndexCache: 7
   _addedNetworkObject: {fileID: 1375338390558589622}
   _networkObjectCache: {fileID: 1375338390558589622}
   hideDelay: 1
@@ -3918,7 +3919,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3f7fc4551da5a8541a40d79c26101ee2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerFootsteps
-  _componentIndexCache: 7
+  _componentIndexCache: 8
   _addedNetworkObject: {fileID: 1375338390558589622}
   _networkObjectCache: {fileID: 1375338390558589622}
   footstepClips:
@@ -3950,7 +3951,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8fc942396fdf33e4c88f3b2266cbd509, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerCombat
-  _componentIndexCache: 8
+  _componentIndexCache: 9
   _addedNetworkObject: {fileID: 1375338390558589622}
   _networkObjectCache: {fileID: 1375338390558589622}
   cameraPosition: {fileID: 5947791071142101092}
@@ -3970,6 +3971,7 @@ MonoBehaviour:
   serverHitWindowSlackTicks: 4
   heavyBlockDamageMultiplier: 0.5
   backstabDamageMultiplier: 2
+  AlwaysParry: 0
 --- !u!114 &1375338390558589622
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4014,6 +4016,7 @@ MonoBehaviour:
   <PredictedOwner>k__BackingField: {fileID: 0}
   NetworkBehaviours:
   - {fileID: 79680208741019812}
+  - {fileID: 6731373883178551752}
   - {fileID: 8466124847542712353}
   - {fileID: 8262684454132448169}
   - {fileID: 8493108342033611647}
@@ -4035,7 +4038,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
-  _initializedTimestamp: -8584238148857177044
+  _initializedTimestamp: -8584234582306872372
 --- !u!114 &219381359120680733
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5516,7 +5519,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 453481867b26f7c43b5bf38802a5f50e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: FishNet.Runtime::FishNet.Component.Transforming.Beta.NetworkTickSmoother
-  _componentIndexCache: 9
+  _componentIndexCache: 10
   _addedNetworkObject: {fileID: 1375338390558589622}
   _networkObjectCache: {fileID: 1375338390558589622}
   _initializationSettings:

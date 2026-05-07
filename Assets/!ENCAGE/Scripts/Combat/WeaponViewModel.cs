@@ -8,6 +8,7 @@ public class WeaponViewModel : NetworkBehaviour
     [SerializeField] private Animator animator;
     private PlayerCamera pCamera;
 
+    private readonly int hashOwnAttackParried = Animator.StringToHash("OwnAttackParried");
     private readonly int hashDirection = Animator.StringToHash("Direction");
     private readonly int hashCharge = Animator.StringToHash("Charge");
     private readonly int hashBlock = Animator.StringToHash("Block");
@@ -66,6 +67,11 @@ public class WeaponViewModel : NetworkBehaviour
         string clip = $"Arms_blockhit";
         animator.Play(clip, 0, 0f);
     }
+
+    public void OwnAttackParried()
+    {
+        animator.SetTrigger(hashOwnAttackParried);
+    }    
 
     public void SetCharge(bool value, int dir)
     {

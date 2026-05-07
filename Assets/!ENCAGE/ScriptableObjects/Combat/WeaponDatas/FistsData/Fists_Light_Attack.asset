@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Fists_Light_Attack
   m_EditorClassIdentifier: Assembly-CSharp::AttackData
   duration: 0.3
-  staminaCost: 0
+  staminaCost: 3
   staminaRegenDelay: 0.5
   baseDamage: 5
   damageVariance: 0.2

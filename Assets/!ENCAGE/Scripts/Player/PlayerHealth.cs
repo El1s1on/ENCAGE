@@ -38,7 +38,7 @@ public class PlayerHealth : NetworkBehaviour
     }
 
     [Server]
-    public void TakeDamage(float amount)
+    public void TakeDamage(int attackerObjectId, float amount, Vector3 hitDirection)
     {
         _health.Value -= amount;
         OnDamage(Owner, amount);
@@ -46,13 +46,25 @@ public class PlayerHealth : NetworkBehaviour
         if (_health.Value <= 0f)
         {
             _health.Value = 0f;
-            pRagdoll.ActivateRagdoll(Vector3.zero);
+            pRagdoll.ActivateRagdoll(hitDirection * 3f);
+
+            if (NetworkManager.ServerManager.Objects.Spawned.TryGetValue(attackerObjectId, out NetworkObject nob))
+            {
+                PlayerHealth attackerHealth = PlayerContext.Get(nob).Health;
+                attackerHealth.Heal(50);
+            }
         }
     }
 
     [Server]
+    public void Heal(float amount)
+    {
+        _health.Value = Mathf.Min(_health.Value + amount, maxHealth);
+    }
+
+    [Server]
     public void TakeCombatDamage(AttackData attack, float damageMultiplier, int attackerObjectId,
-        bool isBackstab, uint serverTick, float hitboxMultiplier = 1f)
+        bool isBackstab, uint serverTick, Vector3 hitDirection, float hitboxMultiplier = 1f)
     {
         if (attack == null)
             return;
@@ -67,7 +79,7 @@ public class PlayerHealth : NetworkBehaviour
 
         float totalMultiplier = Mathf.Max(0f, damageMultiplier) * Mathf.Max(0f, hitboxMultiplier);
         float amount = Mathf.Max(0f, attack.baseDamage * varianceMultiplier * totalMultiplier);
-        TakeDamage(amount);
+        TakeDamage(attackerObjectId, amount, hitDirection);
 
         if (isBackstab)
         {
@@ -101,8 +113,7 @@ public class PlayerHealth : NetworkBehaviour
         Vector3 hurtPunch = Random.insideUnitSphere * hurtIntensity;
         pCamera.AddViewPunch(hurtPunch);
 
-        float strength = hurtIntensity / 500f;
-        pCamera.TakeDamageFlash(strength);
+        float strength = hurtIntensity / 250;
     }
 
     private void OnHealthChange(float prev, float next, bool asServer)

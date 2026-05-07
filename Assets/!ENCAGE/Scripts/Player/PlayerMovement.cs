@@ -41,9 +41,21 @@ public class PlayerMovement : NetworkBehaviour
     [SerializeField] private float sprintStaminaDrainPerSecond = 35f;
     [SerializeField] private float jumpStaminaCost = 15f;
     [SerializeField] private float depletedRegenDelaySeconds = 1.5f;
-
     private float _currentStamina;
     private float _regenDelayRemaining;
+
+    [Header("Stun Settings")]    
+    [SerializeField] private float retreatSpeed;
+    [SerializeField] private float stunTime;
+    [SerializeField] private float retreatTime;
+    private Vector3 retreatDirection;
+    private uint stunTicks;
+    private uint retreatTicks;
+    private uint _stunStartTick = uint.MaxValue;
+    private uint _stunEndTick = uint.MaxValue;
+    private uint _retreatStartTick = uint.MaxValue;
+    private uint _retreatEndTick = uint.MaxValue;
+    private Vector3 _stunnerPosition;
 
     private CharacterController characterController;
     private PlayerContext ctx;
@@ -77,7 +89,8 @@ public class PlayerMovement : NetworkBehaviour
 
         float tickDelta = (float)TimeManager.TickDelta;
         coyoteTicks = (uint)Mathf.Round(coyoteTime / tickDelta);
-
+        stunTicks = (uint)Mathf.Round(stunTime / tickDelta);
+        retreatTicks = (uint)Mathf.Round(retreatTime / tickDelta);
         _currentStamina = maxStamina;
 
         TimeManager.OnTick += OnTick;
@@ -111,10 +124,13 @@ public class PlayerMovement : NetworkBehaviour
     {
         if (data.input.Debug && state.ContainsTicked() && IsServerStarted)
         {
-            if (pRagdoll.IsRagdolled)
-                pRagdoll.DeactivateRagdoll();
-            else
-                pRagdoll.ActivateRagdoll(flatVelocity);
+            //if (pRagdoll.IsRagdolled)
+            //    pRagdoll.DeactivateRagdoll();
+            //else
+            //    pRagdoll.ActivateRagdoll(flatVelocity);
+
+            if(!IsStunned(TimeManager.Tick))
+                ApplyStun(transform.position + transform.forward);
         }
 
         if (pRagdoll.IsRagdolled || !characterController.enabled)
@@ -124,9 +140,10 @@ public class PlayerMovement : NetworkBehaviour
             return;
         }
 
-        PlayerInputData input = data.input;
-
+        uint currentTick = data.GetTick();
         float dt = (float)TimeManager.TickDelta;
+
+        PlayerInputData input = data.input;
 
         if (IsOwner || IsServerStarted)
         {
@@ -148,14 +165,27 @@ public class PlayerMovement : NetworkBehaviour
         transform.rotation = Quaternion.Euler(0f, input.Yaw, 0f);
         pAnimations.SetPitch(input.Pitch);
 
-        uint currentTick = data.GetTick();
-
         ReadInput(input);
         GroundCheck(state.ContainsReplayed(), currentTick);
 
         IsGrounded = currentTick - lastGroundTick <= coyoteTicks;
 
         ApplyGravity(dt, currentTick);
+
+        if (IsStunned(currentTick))
+        {
+            // Находимся в фазе отступления
+            if (currentTick >= _retreatStartTick && currentTick <= _retreatEndTick)
+            {
+                flatVelocity = Vector3.zero;
+                horizontalMove = retreatDirection * retreatSpeed;
+                MoveCharacter(dt);
+            }
+            // Иначе просто стоим на месте (активная фаза стана после отступления)
+
+            return; // Блокируем всё остальное движение
+        }
+
         HandleMovement(input, dt, currentTick);
         HandleJump(input, state.ContainsReplayed(), currentTick);
         MoveCharacter(dt);
@@ -206,9 +236,16 @@ public class PlayerMovement : NetworkBehaviour
             pRagdoll.HasPendingStandup = false;
         }
 
+        uint start = _stunStartTick;
+        uint end = _stunEndTick;
+        bool stunned = (TimeManager.Tick >= start && TimeManager.Tick <= end);
+
         Reconcile(new ReconcileData(
             transform.position, velocity, flatVelocity, transform.rotation, pAnimations.clampedPitch,
             pRagdoll.IsRagdolled, lastGroundTick,
+            _stunnerPosition, // позиция оглушившего
+            stunned, start, end,     // флаг "в стане сейчас"
+            retreatDirection, // текущее направление отступления (даже если стан кончился, оно не повлияет)
             standPos, standRot, performStandup,
             _currentStamina,
             _regenDelayRemaining
@@ -245,6 +282,21 @@ public class PlayerMovement : NetworkBehaviour
         flatVelocity = data.flatVel;
         lastGroundTick = data.groundTick;
         IsGrounded = (data.GetTick() - lastGroundTick <= coyoteTicks);
+
+        if (data.stunStartTick != uint.MaxValue)
+        {
+            _stunStartTick = TimeManager.TickToLocalTick(data.stunStartTick);
+            _stunEndTick = TimeManager.TickToLocalTick(data.stunEndTick);
+            _stunnerPosition = data.stunnerPos;
+            retreatDirection = (transform.position - _stunnerPosition).normalized;
+            _retreatStartTick = _stunStartTick;
+            _retreatEndTick = _stunStartTick + retreatTicks;
+        }
+        else
+        {
+            _stunStartTick = uint.MaxValue;
+            _stunEndTick = uint.MaxValue;
+        }
 
         _currentStamina = data.stamina;
         _regenDelayRemaining = data.regenDelay;
@@ -367,6 +419,8 @@ public class PlayerMovement : NetworkBehaviour
 
     private void GroundCheck(bool isReplayed, uint currentTick)
     {
+        bool needInitialCheck = (lastGroundTick == currentTick && currentTick == 0);
+
         bool wasGrounded = currentTick - lastGroundTick <= coyoteTicks;
         float radius = (velocity.y < 0f) ? fallSphereRadius : groundSphereRadius;
         Vector3 origin = transform.position + Vector3.up * radius;
@@ -382,7 +436,7 @@ public class PlayerMovement : NetworkBehaviour
         );
         if (hit)
         {
-            if (!wasGrounded && velocity.y <= 0f)
+            if (!wasGrounded && velocity.y <= 0f && !needInitialCheck)
             {
                 pAnimations.TriggerLand();
                 if (IsOwner && !isReplayed)
@@ -426,6 +480,60 @@ public class PlayerMovement : NetworkBehaviour
 
         _currentStamina = Mathf.Min(maxStamina, _currentStamina + amount);
         _regenDelayRemaining = 0f;
+    }
+
+    public bool IsStunned(uint currentTick)
+    {
+        return currentTick >= _stunStartTick && currentTick <= _stunEndTick;
+    }
+
+    public bool IsStunPending(uint currentTick)
+    {
+        return currentTick < _stunStartTick && _stunStartTick != uint.MaxValue;
+    }
+
+    [Server]
+    public void ApplyStun(Vector3 stunnerPosition)
+    {
+        uint currentTick = TimeManager.Tick;
+
+        if (currentTick >= _stunStartTick && currentTick <= _stunEndTick)
+            return;
+
+        uint futureTicks = TimeManager.TimeToTicks(0.15f, TickRounding.RoundUp);
+        uint startTick = currentTick + futureTicks;
+        uint endTick = startTick + stunTicks;
+
+        if (ctx.Combat != null)
+        {
+            ctx.Combat.Server_StopAttackImmediate();
+            ctx.Combat.Server_StopBlock();
+        }
+
+        ObserversApplyStun(stunnerPosition, startTick, endTick);
+    }
+
+    [ObserversRpc(RunLocally = true)]
+    private void ObserversApplyStun(Vector3 stunnerPosition, uint serverStartTick, uint serverEndTick)
+    {
+        _stunStartTick = TimeManager.TickToLocalTick(serverStartTick);
+        _stunEndTick = TimeManager.TickToLocalTick(serverEndTick);
+        _stunnerPosition = stunnerPosition;
+
+        retreatDirection = (transform.position - stunnerPosition).normalized;
+
+        _retreatStartTick = _stunStartTick;
+        _retreatEndTick = _stunStartTick + retreatTicks;
+
+        if (base.IsOwner)
+        {
+            PlayerCombat combat = ctx.Combat;
+            if (combat != null)
+            {
+                combat.LocalCancelAttackPresentation();
+                combat.SetLocalCombatState(PlayerCombat.CombatState.Idle); // нужно добавить публичный метод
+            }
+        }
     }
 
     public Vector3 GetFlatVelocity() => flatVelocity;

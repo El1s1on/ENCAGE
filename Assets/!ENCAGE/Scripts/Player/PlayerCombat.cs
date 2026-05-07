@@ -104,6 +104,8 @@ public class PlayerCombat : NetworkBehaviour
 
     public uint ServerBlockStartTick => IsServerInitialized ? blockStartTick : 0u;
 
+    [Tooltip("Only for testing")] public bool AlwaysParry;
+
     private bool CanSendToOwner()
     {
         if (base.Owner == null)
@@ -127,10 +129,6 @@ public class PlayerCombat : NetworkBehaviour
         startTick = blockStartTick;
         return isBlocking;
     }
-    #endregion
-
-    #region Public Server API
-    public bool SharedIsBlocking => isBlocking || m2Held;
     #endregion
 
     #region Network Lifecycle
@@ -192,8 +190,6 @@ public class PlayerCombat : NetworkBehaviour
             Server_StopBlock();
         }
 
-        // Client-side buffered block: if player is holding M2 but block wasn't allowed
-        // at press time, attempt to start it as soon as it becomes legal.
         if (IsOwner && blockBuffered && m2Held)
             TryConsumeBufferedBlock();
     }
@@ -201,7 +197,10 @@ public class PlayerCombat : NetworkBehaviour
     #region Player Input
     private void OnStartM1()
     {
-        if (!IsOwner || pRagdoll.IsRagdolled) return;
+        if (!IsOwner || pRagdoll.IsRagdolled ||
+        pMovement.IsStunned(TimeManager.LocalTick) || pMovement.IsStunPending(TimeManager.LocalTick))
+            return;
+
         if (currentWeapon == null) return;
 
         if (localCombatState == CombatState.Blocking || localCombatState == CombatState.UnblockQueue)
@@ -220,7 +219,9 @@ public class PlayerCombat : NetworkBehaviour
 
     private void OnReleaseM1()
     {
-        if (!IsOwner || pRagdoll.IsRagdolled) return;
+        if (!IsOwner || pRagdoll.IsRagdolled ||
+        pMovement.IsStunned(TimeManager.LocalTick) || pMovement.IsStunPending(TimeManager.LocalTick))
+            return;
         if (currentWeapon == null) return;
 
         if (localCombatState == CombatState.Blocking || localCombatState == CombatState.UnblockQueue)
@@ -257,7 +258,10 @@ public class PlayerCombat : NetworkBehaviour
 
     private void OnStartM2()
     {
-        if (!IsOwner || pRagdoll.IsRagdolled) return;
+        if (!IsOwner || pRagdoll.IsRagdolled ||
+        pMovement.IsStunned(TimeManager.LocalTick) || pMovement.IsStunPending(TimeManager.LocalTick))
+            return;
+
         if (currentWeapon == null) return;
 
         m2Held = true;
@@ -290,7 +294,10 @@ public class PlayerCombat : NetworkBehaviour
 
     private void OnReleaseM2()
     {
-        if (!IsOwner) return;
+        if (!IsOwner || pRagdoll.IsRagdolled ||
+        pMovement.IsStunned(TimeManager.LocalTick) || pMovement.IsStunPending(TimeManager.LocalTick))
+            return;
+
         if (currentWeapon == null) return;
 
         m2Held = false;
@@ -334,7 +341,7 @@ public class PlayerCombat : NetworkBehaviour
         Debug.Log("Buffered attack cancelled");
     }
 
-    private void LocalCancelAttackPresentation()
+    public void LocalCancelAttackPresentation()
     {
         startHoldingTime = -999f;
 
@@ -689,6 +696,11 @@ public class PlayerCombat : NetworkBehaviour
     [TargetRpc]
     private void TargetRPC_SetCombatState(NetworkConnection conn, CombatState state)
     {
+        SetLocalCombatState(state);
+    }
+
+    public void SetLocalCombatState(CombatState state)
+    {
         localCombatState = state;
         if (localCombatState == CombatState.Idle && viewModel != null)
             viewModel.SetBlock(false);
@@ -720,7 +732,8 @@ public class PlayerCombat : NetworkBehaviour
     [TargetRpc]
     private void TargetRPC_OnOwnAttackParried(NetworkConnection conn, int otherPlayerObjectId, Vector3 hitPoint)
     {
-        //viewModel.Parry();
+        pCamera.StunEffect();
+        viewModel.OwnAttackParried();
     }
 
     [TargetRpc]
@@ -743,7 +756,7 @@ public class PlayerCombat : NetworkBehaviour
         blockBuffered = false;
 
         viewModel.Parry();
-        pUI.QuickState("parried", Color.green, 0.5f);
+        pUI.QuickState("Parried", Color.green, 0.5f);
     }
 
     [Server]
@@ -751,6 +764,8 @@ public class PlayerCombat : NetworkBehaviour
     {
         if (pAnimations != null)
             pAnimations.Parry();
+
+        pMovement.AddStamina(currentWeapon.defense.parryStaminaReward);
 
         if (CanSendToOwner())
             TargetRPC_OnOwnParrySuccess(base.Owner, otherPlayerObjectId, hitPoint);
@@ -766,7 +781,21 @@ public class PlayerCombat : NetworkBehaviour
             pMovement.ConsumeStamina(currentWeapon.defense.blockStamina);
 
         if (CanSendToOwner())
+        {
             TargetRPC_OnOwnBlockHit(base.Owner, otherPlayerObjectId, hitPoint, wasHeavy);
+
+            if (pMovement.CurrentStamina > 0)
+            {
+                if (wasHeavy)
+                    TargetRPC_QuickState(base.Owner, "Practically blocked", Color.orange, 0.5f);
+                else
+                    TargetRPC_QuickState(base.Owner, "Blocked", Color.white, 0.5f);
+            }
+            else
+            {
+                TargetRPC_QuickState(base.Owner, "Not enough stamina", Color.red, 0.5f);
+            }
+        }
     }
 
     [ServerRpc(RequireOwnership = true)]
@@ -780,6 +809,8 @@ public class PlayerCombat : NetworkBehaviour
     {
         if (isAttacking) return;
         if (pRagdoll.IsRagdolled) return;
+        if (pMovement.IsStunned(TimeManager.Tick)) return;
+
         serverAttackDirection = dir == 0 ? 1 : (dir > 0 ? 1 : -1);
         if (pMovement.CurrentStamina > 0)
         {
@@ -828,6 +859,8 @@ public class PlayerCombat : NetworkBehaviour
         }
 
         if (pRagdoll.IsRagdolled) return;
+        if (pMovement.IsStunned(TimeManager.Tick) || pMovement.IsStunPending(TimeManager.Tick))
+            return;
 
         if (!isAttackReady)
         {
@@ -889,6 +922,7 @@ public class PlayerCombat : NetworkBehaviour
         }
 
         if (pRagdoll.IsRagdolled) return;
+        if (pMovement.IsStunned(TimeManager.Tick)) return;
         if (serverRegisteredDamageHitThisAttack) return;
         if (currentAttackData == null || TimeManager == null) return;
 
@@ -992,9 +1026,14 @@ public class PlayerCombat : NetworkBehaviour
             {
                 uint parryTicks = TimeManager.TimeToTicks(Mathf.Max(0f, def.parryWindow), TickRounding.RoundUp);
                 wasParried = (parryTicks > 0u) && (TimeManager.Tick - victimBlockStartTick <= parryTicks);
+
+                if (victimCombat.AlwaysParry)
+                    wasParried = true;
+
                 if (wasParried)
                 {
                     damageMultiplier = 0f;
+                    pMovement.ApplyStun(victim.transform.position);
                 }
                 else
                 {
@@ -1018,7 +1057,25 @@ public class PlayerCombat : NetworkBehaviour
             hitboxMultiplier = victimHitboxGroup.GetDamageMultiplier(targetCollider);
         }
 
-        health.TakeCombatDamage(currentAttackData, damageMultiplier, attackerId, isBackstab, TimeManager.Tick, hitboxMultiplier);
+        Vector3 hitDirection = Vector3.zero;
+
+        if (victimHitboxGroup != null && damageMultiplier * hitboxMultiplier > 0)
+        {
+            Vector3 attackerToTarget = targetNob.transform.position - transform.position;
+
+            attackerToTarget.y = 0f;
+
+            if (attackerToTarget.sqrMagnitude < 0.01f)
+                attackerToTarget = transform.forward;
+
+            hitDirection = attackerToTarget.normalized;
+
+            float rawDamage = currentAttackData.baseDamage * damageMultiplier * hitboxMultiplier;
+            victimHitboxGroup.ServerTriggerHitReaction(targetCollider, hitDirection, hitPoint, rawDamage);
+        }
+
+
+        health.TakeCombatDamage(currentAttackData, damageMultiplier, attackerId, isBackstab, TimeManager.Tick, hitDirection, hitboxMultiplier);
 
         if (damageMultiplier * hitboxMultiplier > 0)
         {
@@ -1043,28 +1100,11 @@ public class PlayerCombat : NetworkBehaviour
         else if (wasBlocked && victimCombat != null)
         {
             bool wasHeavy = currentAttackData == currentWeapon.heavyAttack;
+
             victimCombat.ServerNotifyOwnBlockHit(attackerId, hitPoint, wasHeavy);
         }
 
-        if (victimHitboxGroup != null && damageMultiplier * hitboxMultiplier > 0)
-        {
-            Vector3 attackerToTarget = targetNob.transform.position - transform.position;
-
-            attackerToTarget.y = 0f;
-
-            if (attackerToTarget.sqrMagnitude < 0.01f)
-                attackerToTarget = transform.forward;
-
-            Vector3 hitDirection = attackerToTarget.normalized;
-
-            float rawDamage = currentAttackData.baseDamage * damageMultiplier * hitboxMultiplier;
-            victimHitboxGroup.ServerTriggerHitReaction(targetCollider, hitDirection, hitPoint, rawDamage);
-        }
-
         serverRegisteredDamageHitThisAttack = true;
-
-        if (CanSendToOwner())
-            TargetRPC_QuickState(base.Owner, "Player hit.", Color.green, 1.5f);
     }
 
     [ServerRpc(RequireOwnership = true)]
@@ -1079,6 +1119,8 @@ public class PlayerCombat : NetworkBehaviour
         if (isBlocking) return;
         if (unblockQueue) return;
         if (pRagdoll.IsRagdolled) return;
+        if (pMovement.IsStunned(TimeManager.Tick) || pMovement.IsStunPending(TimeManager.Tick))
+            return;
 
         bool duringChargePrep = isAttackReady && !isAttacking;
         bool duringLightAttack = isAttacking && currentAttackData == currentWeapon.lightAttack;
@@ -1235,7 +1277,7 @@ public class PlayerCombat : NetworkBehaviour
     }
 
     [Server]
-    private void Server_StopAttackImmediate()
+    public void Server_StopAttackImmediate()
     {
         if (!isAttacking && !isAttackReady) return;
 
@@ -1303,7 +1345,7 @@ public class PlayerCombat : NetworkBehaviour
     }
 
     [Server]
-    private void Server_StopBlock()
+    public void Server_StopBlock()
     {
         if (isBlocking)
         {
@@ -1313,7 +1355,6 @@ public class PlayerCombat : NetworkBehaviour
 
             if (CanSendToOwner())
             {
-                TargetRPC_QuickState(base.Owner, "Server Unblock", Color.red, 0.5f);
                 TargetRPC_SetCombatState(base.Owner, CombatState.Idle);
             }
                 

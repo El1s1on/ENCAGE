@@ -52,7 +52,8 @@ MonoBehaviour:
     probeVolumeBlendStatesCS: {fileID: 0}
   m_RendererFeatures:
   - {fileID: -5467500375336795205}
-  m_RendererFeatureMap: bb43bc6e60891fb4
+  - {fileID: 4645004352192278263}
+  m_RendererFeatureMap: bb43bc6e60891fb4f76e9018d95e7640
   m_UseNativeRenderPass: 0
   xrSystemData: {fileID: 0}
   postProcessData: {fileID: 11400000, guid: 41439944d30ece34e96484bdb6645b55, type: 2}
@@ -81,3 +82,16 @@ MonoBehaviour:
   m_DepthTextureFormat: 0
   m_AccurateGbufferNormals: 0
   m_IntermediateTextureMode: 1
+--- !u!114 &4645004352192278263
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ac2bb963a1ae85549baa95e76305bc8a, type: 3}
+  m_Name: BlurRendererFeature
+  m_EditorClassIdentifier: Assembly-CSharp::Ilumisoft.Rendering.BlurRendererFeature
+  m_Active: 1

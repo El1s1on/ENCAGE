@@ -428,6 +428,22 @@ MonoBehaviour:
   highlightsEnd:
     m_OverrideState: 1
     m_Value: 1
+--- !u!114 &-2932537850592488513
+MonoBehaviour:
+  m_ObjectHideFlags: 3
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a9044c1c1c50b849a78b46e4ed02090, type: 3}
+  m_Name: BlurVolumeComponent
+  m_EditorClassIdentifier: Assembly-CSharp::Ilumisoft.Rendering.BlurVolumeComponent
+  active: 1
+  intensity:
+    m_OverrideState: 1
+    m_Value: 0
 --- !u!114 &-2052312189621726906
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -547,6 +563,7 @@ MonoBehaviour:
   - {fileID: -7168986985515693754}
   - {fileID: 2845004284470747850}
   - {fileID: 1264489995019901648}
+  - {fileID: -2932537850592488513}
 --- !u!114 &169992679711395336
 MonoBehaviour:
   m_ObjectHideFlags: 3

@@ -1,3 +1,4 @@
+using Drawing;
 using FishNet.Managing.Timing;
 using FishNet.Object;
 using UnityEngine;
@@ -14,16 +15,30 @@ public class Dummy : NetworkBehaviour
 
     [SerializeField] private DummyAction dummyAction;
     private PlayerCombat pCombat;
+    private PlayerHealth pHealth;
+    private PlayerMovement pMovement;
     private uint nextActionTick;
     private uint pendingAttackTick;
     private int direction = 1;
     private bool attackQueued;
 
+    [Header("Debug")]
+    [SerializeField] private float size = 0.2f;
+    [SerializeField] private Vector3 textPivot;
+    [SerializeField] private Quaternion rot;
+
     public override void OnStartServer()
     {
         base.OnStartServer();
-        pCombat = GetComponent<PlayerCombat>();
         TimeManager.OnTick += OnTick;
+    }
+
+    public override void OnStartNetwork()
+    {
+        base.OnStartNetwork();
+        pCombat = GetComponent<PlayerCombat>();
+        pHealth = GetComponent<PlayerHealth>();
+        pMovement = GetComponent<PlayerMovement>();
     }
 
     private void OnTick()
@@ -36,14 +51,22 @@ public class Dummy : NetworkBehaviour
             case DummyAction.LightAttack:
                 HandleLightAttack();
                 break;
-
             case DummyAction.HeavyAttack:
                 HandleHeavyAttack();
                 break;
             case DummyAction.AlwaysBlock:
                 HandleAlwaysBlock();
                 break;
+            case DummyAction.AlwaysParry:
+                HandleAlwaysParry();
+                break;
         }
+    }
+
+    private void Update()
+    {
+        if(IsClientInitialized)
+            Draw.ingame.Label3D(transform.position + textPivot, rot, $"{pHealth.Health}HP\nStunned: {pMovement.IsStunned(TimeManager.Tick)}\n{dummyAction}", size);
     }
 
     private void HandleLightAttack()
@@ -117,6 +140,19 @@ public class Dummy : NetworkBehaviour
 
     private void HandleAlwaysBlock()
     {
+        if (!pCombat.ServerIsBlocking)
+        {
+            pCombat.Server_DoBlock();
+        }
+    }
+
+    private void HandleAlwaysParry()
+    {
+        if (!pCombat.AlwaysParry)
+        {
+            pCombat.AlwaysParry = true;
+        }
+
         if (!pCombat.ServerIsBlocking)
         {
             pCombat.Server_DoBlock();

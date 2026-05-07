@@ -1,4 +1,6 @@
 ﻿using FishNet.Object;
+using Ilumisoft.Rendering;
+using PrimeTween;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -13,6 +15,7 @@ public class PlayerCamera : NetworkBehaviour
     [Header("Sensitivity")]
     [SerializeField] private float mouseSensitivity = 100f;
     [SerializeField] private float pitchLimit = 85f;
+    private float sensitivityMultiplier = 1f;
 
     [Header("Sway Settings")]
     [SerializeField] private float swayLerpSpeed;
@@ -50,21 +53,10 @@ public class PlayerCamera : NetworkBehaviour
     [SerializeField] private float maxContrastIncrease = 35f;
     [SerializeField] private float postProcessLerpSpeed = 8f;
 
-    [Header("Damage Flash (Vignette)")]
-    [SerializeField] private float vignetteFlashMaxIntensity = 0.6f;
-    [SerializeField] private float vignetteFlashDecaySpeed = 8f;
-    [SerializeField] private Color vignetteFlashTargetColor = Color.red;
-
-    private ColorAdjustments colorAdjustments;
-    private float initialSaturation;
-    private float initialContrast;
-    private float currentSaturationTarget;
-    private float currentContrastTarget;
-
-    private Vignette vignette;
-    private float initialVignetteIntensity;
-    private Color initialVignetteColor;
-    private float vignetteFlashStrength;
+    [Header("Stun")]
+    [SerializeField] private float stunSensitivityRecoveryTime = 1f;
+    [SerializeField] private Vector3 stunViewPunch;
+    private BlurVolumeComponent blur;
 
     private float _smoothedExhaustion;
     private float breathCycleTime;
@@ -109,51 +101,19 @@ public class PlayerCamera : NetworkBehaviour
         springVelocity += punch * punchIntensity;
     }
 
-    private void UpdateExhaustion(float dt)
+    public void StunEffect()
     {
-        float staminaPercent = pMovement.CurrentStamina / pMovement.MaxStamina;
-        float target = (1f - staminaPercent) * 0.5f;
+        float startValue = blur.intensity.value;
 
-        float alpha = 1f - Mathf.Exp(-exhaustionSmoothSpeed * dt);
-        _smoothedExhaustion = Mathf.Lerp(_smoothedExhaustion, target, alpha);
-    }
+        AddViewPunch(stunViewPunch);
 
-    private void ApplyExhaustionPostProcessing(float dt)
-    {
-        if (colorAdjustments == null) return;
+        Tween.Custom(startValue, 1f, 0.2f, value => blur.intensity.value = value)
+            .Chain(Tween.Delay(0.1f))
+            .Chain(Tween.Custom(1f, 0f, 0.7f, value => blur.intensity.value = value));
 
-        float norm = _smoothedExhaustion / 0.5f;
-        norm = Mathf.Clamp01(norm);
-
-        float targetSat = initialSaturation + maxSaturationDecrease * norm;
-        float targetCon = initialContrast + maxContrastIncrease * norm;
-
-        float alpha = 1f - Mathf.Exp(-postProcessLerpSpeed * dt);
-        currentSaturationTarget = Mathf.Lerp(currentSaturationTarget, targetSat, alpha);
-        currentContrastTarget = Mathf.Lerp(currentContrastTarget, targetCon, alpha);
-
-        colorAdjustments.saturation.value = currentSaturationTarget;
-        colorAdjustments.contrast.value = currentContrastTarget;
-    }
-
-    public void TakeDamageFlash(float strength01)
-    {
-        if (vignette == null) return;
-
-        vignetteFlashStrength = Mathf.Clamp01(vignetteFlashStrength + strength01);
-    }
-
-    private void ApplyDamageFlash(float dt)
-    {
-        if (vignette == null) return;
-        float decayAlpha = 1f - Mathf.Exp(-vignetteFlashDecaySpeed * dt);
-        vignetteFlashStrength = Mathf.Lerp(vignetteFlashStrength, 0f, decayAlpha);
-        float norm = vignetteFlashStrength;
-        float targetIntensity = Mathf.Lerp(initialVignetteIntensity, vignetteFlashMaxIntensity, norm);
-        Color targetColor = Color.Lerp(initialVignetteColor, vignetteFlashTargetColor, norm);
-
-        vignette.intensity.value = targetIntensity;
-        vignette.color.value = targetColor;
+        Tween.Custom(sensitivityMultiplier, 0f, 0.2f, value => sensitivityMultiplier = value)
+            .Chain(Tween.Delay(0.3f))
+            .Chain(Tween.Custom(0f, 1f, stunSensitivityRecoveryTime, value => sensitivityMultiplier = value));
     }
 
     public override void OnStartClient()
@@ -190,20 +150,9 @@ public class PlayerCamera : NetworkBehaviour
 
         if (ppVolume != null && ppVolume.profile != null)
         {
-            if (ppVolume.profile.TryGet(out colorAdjustments))
+            if (ppVolume.profile.TryGet(out blur))
             {
-                initialSaturation = colorAdjustments.saturation.value;
-                initialContrast = colorAdjustments.contrast.value;
-
-                currentSaturationTarget = initialSaturation;
-                currentContrastTarget = initialContrast;
-            }
-
-            // === ИНИЦИАЛИЗАЦИЯ ВИНЬЕТКИ ===
-            if (ppVolume.profile.TryGet(out vignette))
-            {
-                initialVignetteIntensity = vignette.intensity.value;
-                initialVignetteColor = vignette.color.value;
+                blur.intensity.value = 0;
             }
         }
     }
@@ -233,8 +182,9 @@ public class PlayerCamera : NetworkBehaviour
 
         Vector2 look = pInput.Look;
 
-        Yaw += look.x * mouseSensitivity;
-        Pitch -= look.y * mouseSensitivity;
+        float currentSensitivity = mouseSensitivity * sensitivityMultiplier;
+        Yaw += look.x * currentSensitivity;
+        Pitch -= look.y * currentSensitivity;
         Pitch = Mathf.Clamp(Pitch, -pitchLimit, pitchLimit);
 
         Quaternion targetRotation = Quaternion.Euler(Pitch, Yaw, 0f);
@@ -254,9 +204,6 @@ public class PlayerCamera : NetworkBehaviour
         float dt = Time.deltaTime;
 
         cameraHolder.position = visualCameraTarget.position;
-
-        UpdateExhaustion(dt);
-        ApplyExhaustionPostProcessing(dt);
         ApplyLookSway(dt);
         UpdateSway(dt);
         UpdateVMTime(dt);
@@ -264,7 +211,6 @@ public class PlayerCamera : NetworkBehaviour
         IntegrateSpring(dt);
         ApplyPunch();
         ApplyBobAndBreath(dt);
-        ApplyDamageFlash(dt);
     }
 
     private void ApplyLookSway(float dt)

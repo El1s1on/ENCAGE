@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Fists_Heavy_Attack
   m_EditorClassIdentifier: Assembly-CSharp::AttackData
   duration: 0.85
-  staminaCost: 7
+  staminaCost: 6
   staminaRegenDelay: 1.5
   baseDamage: 10
   damageVariance: 0.1
